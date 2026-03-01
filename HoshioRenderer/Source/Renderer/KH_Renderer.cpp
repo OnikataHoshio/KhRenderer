@@ -18,8 +18,8 @@ KH_BaseMaterial& Material = KH_DefaultMaterial::Instance().BaseMaterial1;
 
 void KH_RendererBase::Render(KH_Scene& Scene)
 {
-	const int Width = KH_Editor::Width;
-	const int Height = KH_Editor::Height;
+	const int Width = KH_Editor::CanvasWidth;
+	const int Height = KH_Editor::CanvasHeight;
 	const int Channel = 3;
 	const unsigned int TotalBytes = Width * Height * Channel;
 	std::vector<unsigned char> PixelData(TotalBytes);

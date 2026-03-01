@@ -1,7 +1,21 @@
 #include "KH_Shader.h"
+#include "Utils/KH_DebugUtils.h"
 
 KH_Shader::KH_Shader(const char* vertexPath, const char* fragmentPath)
 {
+    Create(vertexPath, fragmentPath);
+}
+
+KH_Shader::~KH_Shader()
+{
+    glDeleteProgram(ID);
+}
+
+void KH_Shader::Create(const char* vertexPath, const char* fragmentPath)
+{
+    if (ID != 0)
+        return;
+
     std::string vertexCode;
     std::string fragmentCode;
     std::ifstream vShaderFile;
@@ -108,4 +122,27 @@ void KH_Shader::CheckCompileErrors(unsigned int shader, std::string type)
         	<< std::endl;
         }
     }
+}
+
+KH_ExampleShaders::KH_ExampleShaders()
+{
+    InitShaders();
+}
+
+void KH_ExampleShaders::InitShaders()
+{
+    TestShader.Create("Assert/Shaders/test.vert", "Assert/Shaders/test.frag");
+    PrintShaderLoadMessage("TestShader");
+    AABBShader.Create("Assert/Shaders/DrawAABBs.vert", "Assert/Shaders/DrawAABBs.frag");
+    PrintShaderLoadMessage("AABBShader");
+    TestCanvasShader.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/DefaultCanvas.frag");
+    PrintShaderLoadMessage("TestCanvasShader");
+    RayTracingShader1.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracingVer1.frag");
+    PrintShaderLoadMessage("RTShader1");
+}
+
+void KH_ExampleShaders::PrintShaderLoadMessage(std::string ShaderName)
+{
+    std::string DebugMessage = std::format("Shader ({}) has been loaded.", ShaderName);
+    LOG_D(DebugMessage);
 }

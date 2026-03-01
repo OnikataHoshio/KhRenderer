@@ -64,6 +64,7 @@ class KH_DefaultModels
 public:
 	KH_Model Cube;
 	KH_Model EmptyCube;
+	KH_Model Plane;
 
 	KH_DefaultModels(const KH_DefaultModels&) = delete;
 	KH_DefaultModels& operator=(const KH_DefaultModels&) = delete;
@@ -77,6 +78,8 @@ private:
 	void InitCube();
 
 	void InitEmptyCube();
+
+	void InitPlane();
 };
 
 

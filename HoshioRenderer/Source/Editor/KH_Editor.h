@@ -1,7 +1,7 @@
 #pragma once
 #include "KH_Camera.h"
 #include "KH_Window.h"
-
+#include "KH_RenderView.h"
 
 class KH_Editor
 {
@@ -14,21 +14,36 @@ public:
     void BeginRender();
     void EndRender();
 
+    void UpdateCanvasExtent(uint32_t Width, uint32_t Height);
+    KH_Framebuffer& GetCanvasFramebuffer();
+
     GLFWwindow* GLFWwindow();
 
     KH_Camera Camera;
     KH_Window Window;
 
-    static uint32_t Width;
-    static uint32_t Height;
+    static uint32_t EditorWidth;
+    static uint32_t EditorHeight;
+    static uint32_t CanvasWidth;
+    static uint32_t CanvasHeight;
     static std::string Title;
 
 private:
+    KH_RenderView RenderView;
+
     KH_Editor();  
     ~KH_Editor();
 
     void Initialize();
     void DeInitialize();
+
+    void RenderDockSpace();
+
+    void BeginImgui();
+    void EndImgui();
+
+
+
 };
 
 

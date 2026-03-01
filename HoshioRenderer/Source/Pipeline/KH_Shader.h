@@ -4,10 +4,13 @@
 
 class KH_Shader {
 public:
-    unsigned int ID;
+    unsigned int ID = 0;
 
+    KH_Shader() = default;
     KH_Shader(const char* vertexPath, const char* fragmentPath);
+    ~KH_Shader();
 
+    void Create(const char* vertexPath, const char* fragmentPath);
     void Use() const;
 
     void SetInt(const std::string& name, int value) const;
@@ -18,4 +21,21 @@ public:
 
 private:
     static void CheckCompileErrors(unsigned int shader, std::string type);
+};
+
+class KH_ExampleShaders : public KH_Singleton<KH_ExampleShaders>
+{
+    friend class KH_Singleton<KH_ExampleShaders>;
+private:
+    KH_ExampleShaders();
+    virtual ~KH_ExampleShaders() override = default;
+
+    void InitShaders();
+
+    void PrintShaderLoadMessage(std::string ShaderName);
+public:
+    KH_Shader TestShader;
+    KH_Shader AABBShader;
+    KH_Shader TestCanvasShader;
+    KH_Shader RayTracingShader1;
 };

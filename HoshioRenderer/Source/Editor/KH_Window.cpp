@@ -1,6 +1,7 @@
 #include "KH_Window.h"
 #include "KH_Camera.h"
 
+#include "KH_Editor.h"
 
 KH_Camera* KH_Window::Camera = nullptr;
 
@@ -36,7 +37,6 @@ void KH_Window::BeginRender()
     glfwPollEvents();
     ProcessData();
     ProcessInput(Window);
-
 }
 
 void KH_Window::EndRender()
@@ -81,7 +81,7 @@ void KH_Window::Initialize()
         return;
     }
 
-    glViewport(0, 0, Width, Height);
+    glViewport(0, 0, KH_Editor::CanvasWidth, KH_Editor::CanvasHeight);
     glfwSetWindowUserPointer(Window, this);
     glfwSetFramebufferSizeCallback(Window, FramebufferSizeCallback);
     glfwSetCursorPosCallback(Window, MouseMovementCallback);
@@ -98,6 +98,7 @@ void KH_Window::Initialize()
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
@@ -118,6 +119,8 @@ void KH_Window::Initialize()
 
 void KH_Window::DeInitialize()
 {
+	ImGui::DestroyPlatformWindows();
+
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
@@ -165,6 +168,7 @@ void KH_Window::ProcessInput(GLFWwindow* window)
     }
 }
 
+
 void KH_Window::SetCamera(KH_Camera* Camera)
 {
     this->Camera = Camera;
@@ -172,7 +176,7 @@ void KH_Window::SetCamera(KH_Camera* Camera)
 
 void KH_Window::FramebufferSizeCallback(GLFWwindow* window, int width, int height)
 {
-    glViewport(0, 0, width, height);
+    //glViewport(0, 0, width, height);
 
     auto* self = static_cast<KH_Window*>(glfwGetWindowUserPointer(window));
     if (!self) return;

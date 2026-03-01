@@ -38,6 +38,7 @@ private:
 	void ProcessData();
 	void ProcessInput(GLFWwindow* window);
 
+
 	static void FramebufferSizeCallback(GLFWwindow* window, int width, int height);
 
 	static void MouseMovementCallback(GLFWwindow* window, double xposIn, double yposIn);
@@ -45,6 +46,7 @@ private:
 	static void MouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 
 	static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
+
 private:
 	float LastFrame = 0.0f;
 	float DeltaTime = 0.0f;

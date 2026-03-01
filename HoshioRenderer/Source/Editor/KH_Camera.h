@@ -35,6 +35,8 @@ public:
 
     KH_Ray GetRay(float u, float v) const;
 
+    void UpdateAspect();
+
     void ProcessKeyboard(CameraMovement direction, float deltaTime);
     void ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch = true);
     void ProcessMouseScroll(float yoffset);

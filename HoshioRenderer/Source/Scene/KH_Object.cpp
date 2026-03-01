@@ -151,6 +151,7 @@ KH_DefaultModels::KH_DefaultModels()
 {
     InitCube();
     InitEmptyCube();
+    InitPlane();
 }
 
 void KH_DefaultModels::InitCube()
@@ -206,4 +207,26 @@ void KH_DefaultModels::InitEmptyCube()
     EmptyCube.SetDrawMode(GL_LINES);
 
     EmptyCube.UpdateBuffer();
+}
+
+void KH_DefaultModels::InitPlane()
+{
+    std::vector<glm::vec3> Vertices = {
+            {-1.0f, -1.0f, 0.0f}, // 0: 左下
+            { 1.0f, -1.0f, 0.0f}, // 1: 右下
+            { 1.0f,  1.0f, 0.0f}, // 2: 右上
+            {-1.0f,  1.0f, 0.0f}  // 3: 左上
+    };
+
+    std::vector<unsigned int> Indices = {
+        0, 1, 2,  // 第一个三角形 (左下 -> 右下 -> 右上)
+        0, 2, 3   // 第二个三角形 (左下 -> 右上 -> 左上)
+    };
+
+    Plane.SetVertices(Vertices);
+    Plane.SetIndices(Indices);
+
+    Plane.UpdateBuffer();
+
+    Plane.SetDrawMode(GL_TRIANGLES);
 }

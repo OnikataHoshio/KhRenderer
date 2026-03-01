@@ -15,7 +15,8 @@ KH_Camera::KH_Camera(uint32_t width, uint32_t height, glm::vec3 position, glm::v
     WorldUp = up;
     Yaw = yaw;
     Pitch = pitch;
-    Aspect = static_cast<float>(Width) / static_cast<float>(Height);
+
+    UpdateAspect();
 
     UpdateCameraVectors();
 }
@@ -52,6 +53,11 @@ KH_Ray KH_Camera::GetRay(float u, float v) const
     Ray.Direction = GetRayDirection(u, v);
     Ray.Start = Position;
     return Ray;
+}
+
+void KH_Camera::UpdateAspect()
+{
+    Aspect = static_cast<float>(Width) / static_cast<float>(Height);
 }
 
 

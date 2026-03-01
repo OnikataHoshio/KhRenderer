@@ -10,60 +10,45 @@
 
 int main()
 {
-	KH_Editor::Width = 1920;
-	KH_Editor::Height = 1080;
+	KH_Editor::EditorWidth = 1920;
+	KH_Editor::EditorHeight = 1080;
 	KH_Editor::Title = "KH_Renderer";
 	KH_Editor::Instance();
 
-	KH_Shader TestShader("Assert/Shaders/test.vert", "Assert/Shaders/test.frag");
-	KH_Shader AABBShader("Assert/Shaders/DrawAABBs.vert", "Assert/Shaders/DrawAABBs.frag");
+	//KH_RendererBase BaseRenderer;
+	//BaseRenderer.TraversalMode = KH_PRIMITIVE_TRAVERSAL_MODE::BASE_BVH;
+	//BaseRenderer.Render(KH_ExampleScenes::Instance().ExampleScene1);
 
-	//KH_Model Bunny;
-	//Bunny.LoadOBJ("Assert/Models/bunny.obj");
+	while (!glfwWindowShouldClose(KH_Editor::Instance().GLFWwindow()))
+	{
+		KH_Editor::Instance().BeginRender();
 
-	//KH_BVH BVH(11, 1);
-	//BVH.BuildMode = KH_BVH_BUILD_MODE::SAH;
-	//BVH.LoadObj("Assert/Models/cube.obj");
-	//BVH.LoadObj("Assert/Models/bunny.obj");
-
-	KH_RendererBase BaseRenderer;
-	BaseRenderer.TraversalMode = KH_PRIMITIVE_TRAVERSAL_MODE::BASE_BVH;
-	BaseRenderer.Render(KH_ExampleScene::Instance().ExampleScene1);
-
-	//while (!glfwWindowShouldClose(KH_Editor::Instance().GLFWwindow()))
-	//{
-	//	KH_Editor::Instance().BeginRender();
-
-	//	glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
-	//	glClear(GL_COLOR_BUFFER_BIT);
-	//	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-
-	//	//KH_DefaultModels::Get().Cube.Render(TestShader);
-	//	//KH_DefaultModels::Get().EmptyCube.Render(TestShader);
-	//	Bunny.Render(TestShader);
-	//	KH_ExampleScene::Instance().ExampleScene1.BVH.RenderAABB(AABBShader, glm::vec3(1.0f, 1.0f, 1.0f));
-
-	//	ImGui_ImplOpenGL3_NewFrame();
-	//	ImGui_ImplGlfw_NewFrame();
-	//	ImGui::NewFrame();
-
-	//	{
-	//		ImGui::Begin("KH Canvas Editor");
-	//		ImGui::BeginChild("CanvasArea", ImVec2((float)KH_Editor::Width/2, (float)KH_Editor::Height/2), 1);
-
-	//		ImVec2 origin = ImGui::GetCursorScreenPos();
-	//		ImDrawList* draw_list = ImGui::GetWindowDrawList();
-	//	
-	//		ImGui::EndChild();
-	//		ImGui::End();
-	//	}
+		glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
 
-	//	ImGui::Render();
-	//	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+		//KH_DefaultModels::Get().Cube.Render(TestShader);
+		//KH_DefaultModels::Get().EmptyCube.Render(TestShader);
+		//KH_DefaultModels::Get().Plane.Render(TestShader);
 
-	//	KH_Editor::Instance().EndRender();
-	//}
+		//Bunny.Render(TestShader);
+		//KH_ExampleScene::Instance().ExampleScene1.BVH.RenderAABB(AABBShader, glm::vec3(1.0f, 1.0f, 1.0f));
+
+		KH_ExampleScenes::Instance().ExampleScene1.Render();
+
+		{
+			ImGui::Begin("Global Info");
+			{
+				ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+				ImGui::Separator();
+			}
+			ImGui::End();
+		}
+
+
+		KH_Editor::Instance().EndRender();
+	}
 
 	return 0;
 }
