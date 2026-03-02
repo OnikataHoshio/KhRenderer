@@ -99,6 +99,7 @@ void KH_Window::Initialize()
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.FontGlobalScale = 1.2f;
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
@@ -108,6 +109,8 @@ void KH_Window::Initialize()
     ImGuiStyle& style = ImGui::GetStyle();
     style.ScaleAllSizes(main_scale);        // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
     style.FontScaleDpi = main_scale;        // Set initial font scale. (in docking branch: using io.ConfigDpiScaleFonts=true automatically overrides this for every window depending on the current monitor)
+
+    style.FontSizeBase = 20.0f;
 
     // Setup Platform/Renderer backends
     ImGui_ImplGlfw_InitForOpenGL(Window, true);

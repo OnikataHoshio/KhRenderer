@@ -4,7 +4,7 @@
 
 class KH_Camera;
 
-class GLFWwindow;
+struct GLFWwindow;
 
 class KH_Window
 {
@@ -30,6 +30,7 @@ public:
 	std::string Title;
 
 	GLFWwindow* Window;
+
 
 private:
 	void Initialize();

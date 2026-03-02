@@ -10,8 +10,8 @@
 
 int main()
 {
-	KH_Editor::EditorWidth = 1920;
-	KH_Editor::EditorHeight = 1080;
+	KH_Editor::EditorWidth = 1280;
+	KH_Editor::EditorHeight = 920;
 	KH_Editor::Title = "KH_Renderer";
 	KH_Editor::Instance();
 
@@ -37,14 +37,6 @@ int main()
 
 		KH_ExampleScenes::Instance().ExampleScene1.Render();
 
-		{
-			ImGui::Begin("Global Info");
-			{
-				ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-				ImGui::Separator();
-			}
-			ImGui::End();
-		}
 
 
 		KH_Editor::Instance().EndRender();

@@ -2,7 +2,7 @@
 #include "KH_AABB.h"
 
 class KH_Shader;
-class KH_Triangle;
+struct KH_Triangle;
 
 enum class KH_BVH_SPLIT_MODE
 {

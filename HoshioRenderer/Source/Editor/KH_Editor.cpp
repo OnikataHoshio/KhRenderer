@@ -26,6 +26,9 @@ void KH_Editor::BeginRender()
 void KH_Editor::EndRender()
 {
     RenderView.Render();
+    Console.Render();
+    Setting.Render();
+    GlobalInfo.Render();
     EndImgui();
 	Window.EndRender();
 }
@@ -44,7 +47,6 @@ KH_Framebuffer& KH_Editor::GetCanvasFramebuffer()
 {
     return RenderView.Framebuffer;
 }
-
 
 KH_Editor::KH_Editor()
 	:Camera(CanvasWidth, CanvasHeight), Window(EditorWidth, EditorHeight, Title)

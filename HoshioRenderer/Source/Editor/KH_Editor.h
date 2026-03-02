@@ -1,7 +1,7 @@
 #pragma once
 #include "KH_Camera.h"
 #include "KH_Window.h"
-#include "KH_RenderView.h"
+#include "KH_Panel.h"
 
 class KH_Editor
 {
@@ -30,6 +30,9 @@ public:
 
 private:
     KH_RenderView RenderView;
+    KH_Console Console;
+    KH_Setting Setting;
+    KH_GlobalInfo GlobalInfo;
 
     KH_Editor();  
     ~KH_Editor();

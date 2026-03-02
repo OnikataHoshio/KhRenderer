@@ -10,6 +10,12 @@ enum class KH_LOG_FLAG
 	Error = 3
 };
 
+struct KH_LOG_MESSAGE
+{
+	KH_LOG_FLAG Flag;
+	std::string Message;
+};
+
 void KH_Log(KH_LOG_FLAG Flag, const std::string& Message, const char* File, int Line);
 
 #define LOG_T(msg) KH_Log(KH_LOG_FLAG::Temp, msg, __FILE__, __LINE__)

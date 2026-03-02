@@ -1,5 +1,7 @@
 #include "KH_DebugUtils.h"
 
+#include "Editor/KH_Panel.h"
+
 
 static std::mutex gLogMutex;
 
@@ -22,10 +24,20 @@ void KH_Log(KH_LOG_FLAG Flag, const std::string& Message, const char* File, int 
 	    case KH_LOG_FLAG::Error:   Label = "[ERROR]"; Color = "\033[31m"; break; // 红色
     }
 
-    std::cout << Color                     
-        << "[" << Timestamp << "] "   
-        << Label         
-        << LogInfo                    
-        << "\033[0m"                 
-        << std::endl;
+    std::string FmtMessage = std::format("{}[{}] {} {} \033[0m\n",
+        Color, Timestamp, Label, LogInfo);
+
+    //std::cout << Color                     
+    //    << "[" << Timestamp << "] "   
+    //    << Label         
+    //    << LogInfo                    
+    //    << "\033[0m"                 
+    //    << std::endl;
+
+    std::cout << FmtMessage;
+
+    FmtMessage = std::format("[{}] {} {}",
+         Timestamp, Label, LogInfo);
+	
+    KH_Console::LogMessages.emplace_back(Flag, FmtMessage);
 }
