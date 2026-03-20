@@ -15,7 +15,8 @@ public:
     void EndRender();
 
     void UpdateCanvasExtent(uint32_t Width, uint32_t Height);
-    KH_Framebuffer& GetCanvasFramebuffer();
+	void BindCanvasFramebuffer();
+    void UnbindCanvasFramebuffer();
 
     GLFWwindow* GLFWwindow();
 

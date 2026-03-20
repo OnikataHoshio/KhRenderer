@@ -71,7 +71,9 @@ public:
 	//unsigned int ModelMats_SSBO = 0;
 	KH_SSBO<glm::mat4> ModelMats_SSBO;
 
-	void RenderAABB(KH_Shader& Shader, glm::vec3 Color);
+	static constexpr bool bIsBuildOnCPU = true;
+
+	void RenderAABB(KH_Shader& Shader, glm::vec3 Color) const;
 
 	virtual void BindAndBuild(std::vector<KH_Triangle>& Triangles) = 0;
 

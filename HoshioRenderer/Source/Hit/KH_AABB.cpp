@@ -150,6 +150,12 @@ void KH_AABB::Update(const KH_Triangle& Triangle)
 	MaxPos = Triangle.GetMaxPos();
 }
 
+void KH_AABB::Reset()
+{
+	MinPos = glm::vec3(std::numeric_limits<float>::max());
+	MaxPos = glm::vec3(-std::numeric_limits<float>::max());
+}
+
 bool KH_AABB::IsInvalid() const
 {
 	return glm::any(glm::greaterThan(MinPos, MaxPos));

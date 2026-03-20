@@ -11,6 +11,11 @@ KH_Editor& KH_Editor::Instance()
 	return instance;
 }
 
+void KH_Editor::UnbindCanvasFramebuffer()
+{
+    RenderView.Framebuffer.Unbind();
+}
+
 GLFWwindow* KH_Editor::GLFWwindow()
 {
 	return Window.Window;
@@ -43,9 +48,9 @@ void KH_Editor::UpdateCanvasExtent(uint32_t Width, uint32_t Height)
     Camera.UpdateAspect();
 }
 
-KH_Framebuffer& KH_Editor::GetCanvasFramebuffer()
+void KH_Editor::BindCanvasFramebuffer()
 {
-    return RenderView.Framebuffer;
+    RenderView.Framebuffer.Bind();
 }
 
 KH_Editor::KH_Editor()

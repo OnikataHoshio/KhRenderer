@@ -38,6 +38,17 @@ public:
         glBindBuffer(Target, 0);
     }
 
+    void Clear() const {
+        if (ID == 0 || Size == 0) return;
+
+        glBindBuffer(Target, ID);
+
+        GLenum format = (sizeof(T) % 4 == 0) ? GL_R32UI : GL_R8UI;
+
+        glClearBufferData(Target, format, GL_RED_INTEGER, GL_UNSIGNED_INT, nullptr);
+        glBindBuffer(Target, 0);
+    }
+
     void SetBindPoint(unsigned int BindPoint) {
         this->BindPoint = BindPoint;
     }

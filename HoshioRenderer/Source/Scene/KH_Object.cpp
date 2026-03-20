@@ -87,9 +87,7 @@ void KH_Model::UpdateBuffer()
 
 void KH_Model::Render(KH_Shader& Shader)
 {
-    KH_Framebuffer& Framebuffer = KH_Editor::Instance().GetCanvasFramebuffer();
-
-    Framebuffer.Bind();
+    KH_Editor::Instance().BindCanvasFramebuffer();
 
     Shader.Use();
     Shader.SetMat4("model", GetModelMatrix());
@@ -100,7 +98,7 @@ void KH_Model::Render(KH_Shader& Shader)
     glDrawElements(DrawMode, static_cast<GLsizei>(Indices.size()), GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
-    Framebuffer.Unbind();
+    KH_Editor::Instance().UnbindCanvasFramebuffer();
 }
 
 void KH_Model::Clear()

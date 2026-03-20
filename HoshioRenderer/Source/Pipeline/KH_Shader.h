@@ -47,4 +47,5 @@ public:
     KH_Shader RayTracingShader1_2;
     KH_Shader RayTracingShader1_3;
     KH_Shader RayTracingShader2_0;
+    KH_Shader RayTracingShader2_1;
 };

@@ -67,3 +67,28 @@ protected:
 };
 
 
+template <>
+struct std::formatter<glm::ivec2> {
+    constexpr auto parse(std::format_parse_context& ctx) { return ctx.begin(); }
+    auto format(const glm::ivec2& v, std::format_context& ctx) const {
+        return std::format_to(ctx.out(), "({}, {})", v.x, v.y);
+    }
+};
+
+template <>
+struct std::formatter<glm::vec2> {
+    constexpr auto parse(std::format_parse_context& ctx) { return ctx.begin(); }
+    auto format(const glm::vec2& v, std::format_context& ctx) const {
+        return std::format_to(ctx.out(), "({:.2f}, {:.2f})", v.x, v.y);
+    }
+};
+
+template <>
+struct std::formatter<glm::vec3> {
+    constexpr auto parse(std::format_parse_context& ctx) { return ctx.begin(); }
+    auto format(const glm::vec3& v, std::format_context& ctx) const {
+        return std::format_to(ctx.out(), "({:.2f}, {:.2f}, {:.2f})", v.x, v.y, v.z);
+    }
+};
+
+

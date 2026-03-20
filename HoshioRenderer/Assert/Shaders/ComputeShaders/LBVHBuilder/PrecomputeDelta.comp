@@ -1,0 +1,47 @@
+#version 460
+
+layout (local_size_x = 512, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 1) buffer Morton3DBuffer { uvec2 Morton3D[]; };
+layout(std430, binding = 3) buffer AuxiliaryBuffer { int Root; int Delta[]; };
+
+uniform int uElementCount;
+
+int ComputeDelta(uint i)
+{
+    uvec2 first = Morton3D[i - 1];
+    uvec2 second = Morton3D[i];
+    
+    uint high = first.x ^ second.x;
+    uint low  = first.y ^ second.y;
+
+    if (high != 0u) 
+    {
+        return 31 - findMSB(high);
+    } 
+    else if (low != 0u) 
+    {
+        return 32 + (31 - findMSB(low));
+    }
+
+    return 64; 
+}
+
+
+void main()
+{
+    uint globalID = gl_GlobalInvocationID.x;
+    int N = uElementCount;
+
+    if (globalID > N) return; // 越界保护
+
+    if (globalID == 0) {
+        Delta[0] = -1;
+    } 
+    else if (globalID == uint(N)) {
+        Delta[N] = -1;
+    } 
+    else {
+        Delta[globalID] = ComputeDelta(globalID);
+    }
+}

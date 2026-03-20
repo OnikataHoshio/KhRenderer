@@ -18,8 +18,8 @@ void main(){
     uint idx1 = threadId;
     uint idx2 = threadId + THREAD_COUNT;
 
-    sData[threadId]                = (idx1 < uBlockCount) ? BlockSum[idx1] : ivec4(0);
-    sData[threadId + THREAD_COUNT] = (idx2 < uBlockCount) ? BlockSum[idx2] : ivec4(0);
+    sData[threadId]                = (idx1 < uBlockCount) ? BlockSum[idx1] : uvec4(0);
+    sData[threadId + THREAD_COUNT] = (idx2 < uBlockCount) ? BlockSum[idx2] : uvec4(0);
     barrier();
 
     for (int stride = 1; stride < BLOCK_SIZE; stride <<= 1) {
@@ -38,7 +38,7 @@ void main(){
         sComponentOffset.z = total.x + total.y;
         sComponentOffset.w = total.x + total.y + total.z;
 
-        sData[BLOCK_SIZE - 1] = ivec4(0); 
+        sData[BLOCK_SIZE - 1] = uvec4(0); 
     }
     barrier();
 

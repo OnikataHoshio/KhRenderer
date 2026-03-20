@@ -1,0 +1,110 @@
+#version 460
+
+layout (local_size_x = 512, local_size_y = 1, local_size_z = 1) in;
+
+struct Triangle{
+    vec4 P1, P2, P3;
+    vec4 N1, N2, N3;
+    ivec4 MaterialSlot;
+};
+
+struct LBVHNode{
+    ivec4 Param1;
+	ivec4 Param2;
+    vec4 AABB_MinPos;
+    vec4 AABB_MaxPos;
+};
+
+layout(std430, binding = 0) buffer TriangleBuffer { Triangle Triangles[]; };
+layout(std430, binding = 1) buffer Morton3DBuffer { uvec2 SortedMorton3D[]; };
+layout(std430, binding = 2) buffer LBVHNodeBuffer { LBVHNode BVHNodes[]; };
+layout(std430, binding = 3) buffer AuxiliaryBuffer { int Root; int Delta[]; };
+layout(std430, binding = 4) buffer AtomicFlagBuffer { int AtomicFlags[]; };
+
+uniform int uElementCount;
+
+bool IsLeftChild(ivec2 Range)
+{
+	return Delta[Range.x] < Delta[Range.y + 1];
+}
+
+bool IsRootNode(ivec2 Range)
+{
+	return Range.x == 0 && Range.y == uElementCount - 1;
+}
+
+bool IsLeafNode(int NodeID)
+{
+	return NodeID < uElementCount;
+}
+
+void InitLBVHNodes(int NodeID)
+{
+    uvec2 Morton3D = SortedMorton3D[NodeID];
+    Triangle t = Triangles[Morton3D.y];
+    LBVHNode Node;
+    Node.Param1 = ivec4(-1, -1, 1, 0);
+	Node.Param2 = ivec4(NodeID, NodeID, 0,  0);
+    Node.AABB_MinPos = min(t.P1, min(t.P2, t.P3));
+    Node.AABB_MaxPos = max(t.P1, max(t.P2, t.P3));
+    BVHNodes[NodeID] = Node;
+}
+
+void main()
+{
+    uint globalID = gl_GlobalInvocationID.x;
+    int N = uElementCount;
+    if(globalID >= N) return;
+
+    InitLBVHNodes(int(globalID));
+    if (N == 1) {
+        if(globalID == 0) Root = 0;
+        return;
+    }
+
+    int CurrNodeID = int(globalID);
+    
+    for(int i = 0; i < 64; i++) 
+    {
+        LBVHNode CurrNode = BVHNodes[CurrNodeID];
+        ivec2 CurrRange = CurrNode.Param2.xy;
+        int ParentLocalID;
+
+        bool isLeft = IsLeftChild(CurrRange);
+
+        if (isLeft) ParentLocalID = CurrRange.y;
+        else        ParentLocalID = CurrRange.x - 1;
+
+        int ParentGlobalID = ParentLocalID + N;
+
+        int BroNodeID = atomicAdd(AtomicFlags[ParentLocalID], CurrNodeID + 1);
+
+        if (BroNodeID == -1) return; 
+
+        LBVHNode BroNode = BVHNodes[BroNodeID ];
+        ivec2 BroRange = BroNode.Param2.xy;
+
+        LBVHNode Node;
+
+        if (isLeft){
+            Node.Param1 = ivec4(CurrNodeID, BroNodeID, 0, 0);
+            Node.Param2 = ivec4(CurrRange.x, BroRange.y, 0, 0);
+        }
+        else{
+            Node.Param1 = ivec4(BroNodeID, CurrNodeID, 0, 0);
+            Node.Param2 = ivec4(BroRange.x, CurrRange.y, 0, 0);
+        }
+
+        Node.AABB_MinPos = min(CurrNode.AABB_MinPos, BroNode.AABB_MinPos);
+        Node.AABB_MaxPos = max(CurrNode.AABB_MaxPos, BroNode.AABB_MaxPos);
+
+        BVHNodes[ParentGlobalID] = Node;
+
+        if (IsRootNode(Node.Param2.xy)) {
+            Root = ParentGlobalID;
+            return;
+        }
+
+        CurrNodeID = ParentGlobalID;
+    }
+}

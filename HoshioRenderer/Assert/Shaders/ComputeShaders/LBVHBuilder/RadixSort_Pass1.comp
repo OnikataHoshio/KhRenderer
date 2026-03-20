@@ -19,7 +19,7 @@ shared uvec2 sLocalShuffle[BLOCK_SIZE];
 
 uint ExtractBits(uvec2 data) {
     if(uBitShift > 30)
-        return (data.x >> (uBitShift - 30)) & 3;
+        return (data.x >> (uBitShift - 32)) & 3;
     else 
         return (data.y >> uBitShift) & 3;
 }
@@ -37,8 +37,8 @@ void main(){
     uint bits1 = ExtractBits(data1);
     uint bits2 = ExtractBits(data2);
 
-    sCnt[threadId] = ivec4(0);
-    sCnt[threadId + THREAD_COUNT] = ivec4(0);
+    sCnt[threadId] = uvec4(0);
+    sCnt[threadId + THREAD_COUNT] = uvec4(0);
 
     if(idx1 < uElementCount) sCnt[threadId][bits1] = 1;
     if(idx2 < uElementCount) sCnt[threadId + THREAD_COUNT][bits2] = 1;
@@ -55,7 +55,7 @@ void main(){
     if (threadId == 0) {
         sDigitTotal = sCnt[BLOCK_SIZE - 1];
         BlockSum[groupId] = sDigitTotal;
-        sCnt[BLOCK_SIZE - 1] = ivec4(0); 
+        sCnt[BLOCK_SIZE - 1] = uvec4(0); 
         
         sOffset[0] = 0;
         sOffset[1] = sDigitTotal.x;

@@ -29,6 +29,8 @@ public:
 
 	void Update(const KH_Triangle& Triangle);
 
+	void Reset();
+
 	bool IsInvalid() const;
 
 	glm::vec3 GetSize() const;

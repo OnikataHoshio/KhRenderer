@@ -17,7 +17,7 @@ shared uint sOffset[4];
 
 uint ExtractBits(uvec2 data) {
     if(uBitShift > 30)
-        return (data.x >> (uBitShift - 30)) & 3;
+        return (data.x >> (uBitShift - 32)) & 3;
     else 
         return (data.y >> uBitShift) & 3;
 }

@@ -41,19 +41,50 @@ struct KH_CameraParam {
     glm::vec4 Front;
 };
 
-template<typename BVHType>
-class KH_Scene {
-private:
+class KH_SceneBase {
+    friend class KH_GpuLBVH;
+protected:
     KH_SSBO<KH_TriangleEncoded> Triangle_SSBO;
     KH_SSBO<KH_BRDFMaterialEncoded> Material_SSBO;
+    KH_UBO<KH_CameraParam> CameraParam_UB0;
+
+    void SetCameraParamUBO();
+    void SetAndBindCameraParamUB0();
+
+    std::vector<KH_TriangleEncoded> EncodeTriangles() const;
+    std::vector<KH_BRDFMaterialEncoded> EncodeBSDFMaterials() const;
+
+public:
+    std::vector<KH_Model> Models;
+    std::vector<KH_Triangle> Triangles;
+    std::vector<KH_BRDFMaterial> Materials;
+
+    KH_AABB AABB;
+
+
+    KH_SceneBase() = default;
+
+    void LoadObj(const std::string& path, float scale = 1.0, int MaterialSlot = KH_MATERIAL_UNDEFINED_SLOT);
+
+    void AddTriangles(const KH_Triangle& Triangle);
+
+    void Clear();
+};
+
+template<typename BVHType>
+class KH_Scene : public KH_SceneBase{
+private:
     KH_SSBO<KH_FlatBVHNodeEncoded> LBVHNode_SSBO;
     KH_SSBO<uint32_t> SortedIndices_SSBO;
-    KH_UBO<KH_CameraParam> CameraParam_UB0;
 
     void SetSSBOs();
     void SetRayTracingParam(KH_Shader& Shader);
 
+    std::vector<KH_FlatBVHNodeEncoded> EncodeLBVHNodes();
+
 public:
+    BVHType BVH;
+
     template<typename... Args>
     KH_Scene(Args&&... args) : BVH(std::forward<Args>(args)...) {
         Triangle_SSBO.SetBindPoint(0);
@@ -65,27 +96,38 @@ public:
 
     ~KH_Scene() = default;
 
-    void LoadObj(const std::string& path, float scale = 1.0, int MaterialSlot = KH_MATERIAL_UNDEFINED_SLOT);
-    void AddTriangles(const KH_Triangle& Triangle);
     void BindAndBuild();
     void Render();
-    void Clear();
 
-    std::vector<KH_TriangleEncoded> EncodeTriangles();
-    std::vector<KH_BRDFMaterialEncoded> EncodeBSDFMaterials();
-    std::vector<KH_FlatBVHNodeEncoded> EncodeLBVHNodes();
+};
 
-    BVHType BVH;
-    KH_AABB AABB;
+template<>
+class KH_Scene<KH_GpuLBVH> : public KH_SceneBase
+{
+    friend class KH_GpuLBVH;
+private:
+    void SetSSBOs();
+    void SetRayTracingParam(KH_Shader& Shader);
 
-    std::vector<KH_Model> Models;
-    std::vector<KH_Triangle> Triangles;
-    std::vector<KH_BRDFMaterial> Materials;
+public:
+    KH_GpuLBVH BVH;
+
+    KH_Scene() {
+        Triangle_SSBO.SetBindPoint(0);
+        Material_SSBO.SetBindPoint(4);
+        CameraParam_UB0.SetBindPoint(5);
+    }
+
+    ~KH_Scene() = default;
+
+    void BindAndBuild();
+    void Render();
 };
 
 using KH_BVHScene = KH_Scene<KH_BVH>;
 using KH_FlatBVHScene = KH_Scene<KH_FlatBVH>;
 using KH_LBVHScene = KH_Scene<KH_LBVH>;
+using KH_GpuLBVHScene = KH_Scene<KH_GpuLBVH>;
 
 template <typename BVHType>
 void KH_Scene<BVHType>::SetSSBOs()
@@ -97,20 +139,12 @@ void KH_Scene<BVHType>::SetSSBOs()
     std::vector<KH_BRDFMaterialEncoded> BSDFMaterialEncodeds = EncodeBSDFMaterials();
     std::vector<KH_FlatBVHNodeEncoded> LBVHNodeEncodeds = EncodeLBVHNodes();
 
-    std::string DebugMessage = std::format("KH_TriangleEncoded size : {} Byte", sizeof(KH_TriangleEncoded));
-    LOG_D(DebugMessage);
-    DebugMessage = std::format("KH_BSDFMaterialEncoded size : {} Byte", sizeof(KH_BRDFMaterialEncoded));
-    LOG_D(DebugMessage);
-    DebugMessage = std::format("KH_LBVHNodeEcoded size : {} Byte", sizeof(KH_FlatBVHNodeEncoded));
-    LOG_D(DebugMessage);
-
     Triangle_SSBO.SetData(TriangleEncodeds);
     Material_SSBO.SetData(BSDFMaterialEncodeds);
     LBVHNode_SSBO.SetData(LBVHNodeEncodeds);
 
     if constexpr (std::is_same_v<BVHType, KH_LBVH>)
         SortedIndices_SSBO.SetData(BVH.SortedIndices);
-
 }
 
 template <typename BVHType>
@@ -134,92 +168,7 @@ void KH_Scene<BVHType>::SetRayTracingParam(KH_Shader& Shader)
     Shader.SetInt("LBVHNodeCount", BVH.BVHNodes.size());
     Shader.SetInt("RootNodeID", BVH.Root);
 
-
-    KH_CameraParam CameraParam;
-    CameraParam.AspectAndFovy = glm::vec4(Camera.Aspect, Camera.Fovy, 0.0f, 0.0f);
-    CameraParam.Position = glm::vec4(Camera.Position, 1.0f);
-    CameraParam.Right = glm::vec4(Camera.Right, 1.0f);
-    CameraParam.Up = glm::vec4(Camera.Up, 1.0f);
-    CameraParam.Front = glm::vec4(Camera.Front, 1.0f);
-
-    CameraParam_UB0.SetSingleData(CameraParam);
-    CameraParam_UB0.Bind();
-
-    //Shader.SetVec4("UCameraParam.AspectAndFovy", glm::vec4(Camera.Aspect, Camera.Fovy, 0.0f, 0.0f));
-    //Shader.SetVec4("UCameraParam.Position", glm::vec4(Camera.Position, 1.0f));
-    //Shader.SetVec4("UCameraParam.Right", glm::vec4(Camera.Right, 1.0f));
-    //Shader.SetVec4("UCameraParam.Up", glm::vec4(Camera.Up, 1.0f));
-    //Shader.SetVec4("UCameraParam.Front", glm::vec4(Camera.Front, 1.0f));
-    
-}
-
-template <typename BVHType>
-void KH_Scene<BVHType>::LoadObj(const std::string& path, float scale, int MaterialSlot)
-{
-    tinyobj::ObjReader reader;
-    if (!reader.ParseFromFile(path)) {
-        std::cerr << "TinyObjReader Error: " << reader.Error() << std::endl;
-        return;
-    }
-
-    const auto& attrib = reader.GetAttrib();
-    const auto& shapes = reader.GetShapes();
-
-
-    size_t totalIndices = 0;
-    for (const auto& shape : shapes) totalIndices += shape.mesh.indices.size();
-    Triangles.reserve(totalIndices / 3);
-
-    std::vector<glm::vec3> vertexNormals(attrib.vertices.size() / 3, glm::vec3(0.0f));
-
-    for (const auto& shape : shapes) {
-        size_t index_offset = 0;
-        for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
-            tinyobj::index_t idx0 = shape.mesh.indices[index_offset + 0];
-            tinyobj::index_t idx1 = shape.mesh.indices[index_offset + 1];
-            tinyobj::index_t idx2 = shape.mesh.indices[index_offset + 2];
-
-            glm::vec3 p0(attrib.vertices[3 * idx0.vertex_index + 0], attrib.vertices[3 * idx0.vertex_index + 1], attrib.vertices[3 * idx0.vertex_index + 2]);
-            glm::vec3 p1(attrib.vertices[3 * idx1.vertex_index + 0], attrib.vertices[3 * idx1.vertex_index + 1], attrib.vertices[3 * idx1.vertex_index + 2]);
-            glm::vec3 p2(attrib.vertices[3 * idx2.vertex_index + 0], attrib.vertices[3 * idx2.vertex_index + 1], attrib.vertices[3 * idx2.vertex_index + 2]);
-
-            glm::vec3 faceNormal = glm::cross(p1 - p0, p2 - p0);
-
-            vertexNormals[idx0.vertex_index] += faceNormal;
-            vertexNormals[idx1.vertex_index] += faceNormal;
-            vertexNormals[idx2.vertex_index] += faceNormal;
-
-            index_offset += 3;
-        }
-    }
-
-    for (const auto& shape : shapes) {
-        size_t index_offset = 0;
-        for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
-            tinyobj::index_t idx[3];
-            glm::vec3 p[3], n[3];
-
-            for (size_t v = 0; v < 3; v++) {
-                idx[v] = shape.mesh.indices[index_offset + v];
-                p[v] = { attrib.vertices[3 * idx[v].vertex_index + 0], attrib.vertices[3 * idx[v].vertex_index + 1], attrib.vertices[3 * idx[v].vertex_index + 2] };
-
-                n[v] = glm::normalize(vertexNormals[idx[v].vertex_index]);
-            }
-
-            Triangles.emplace_back(scale * p[0], scale * p[1], scale * p[2], n[0], n[1], n[2], MaterialSlot);
-
-            AABB.Merge(Triangles.back());
-
-            index_offset += 3;
-        }
-    }
-}
-
-template <typename BVHType>
-void KH_Scene<BVHType>::AddTriangles(const KH_Triangle& Triangle)
-{
-    Triangles.emplace_back(Triangle);
-    AABB.Merge(Triangles.back());
+    SetAndBindCameraParamUB0();
 }
 
 template<typename BVHType>
@@ -241,11 +190,7 @@ void KH_Scene<BVHType>::Render()
     if constexpr (std::is_same_v<BVHType, KH_BVH>)
         return;
 
-
-    //KH_Shader& Shader = KH_ExampleShaders::Instance().RayTracingShader1_3;
-    KH_Framebuffer& Framebuffer = KH_Editor::Instance().GetCanvasFramebuffer();
-
-    Framebuffer.Bind();
+    KH_Editor::Instance().BindCanvasFramebuffer();
     
     if constexpr (std::is_same_v<BVHType, KH_FlatBVH>)
         SetRayTracingParam(KH_ExampleShaders::Instance().RayTracingShader1_3);
@@ -256,67 +201,9 @@ void KH_Scene<BVHType>::Render()
     glDrawElements(KH_DefaultModels::Instance().Plane.GetDrawMode(), static_cast<GLsizei>(KH_DefaultModels::Instance().Plane.GetIndicesSize()), GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
-    Triangle_SSBO.Unbind();
-    Material_SSBO.Unbind();
-    LBVHNode_SSBO.Unbind();
-    SortedIndices_SSBO.Unbind();
-
-    Framebuffer.Unbind();
+    KH_Editor::Instance().UnbindCanvasFramebuffer();
 }
 
-template <typename BVHType>
-void KH_Scene<BVHType>::Clear()
-{
-    Triangles.clear();
-}
-
-template <typename BVHType>
-std::vector<KH_TriangleEncoded> KH_Scene<BVHType>::EncodeTriangles()
-{
-    if constexpr (std::is_same_v<BVHType, KH_BVH>)
-        return std::vector<KH_TriangleEncoded>();
-
-    const int nTriangles = Triangles.size();
-    std::vector<KH_TriangleEncoded> TriangleEncodeds(nTriangles);
-
-    for (int i = 0; i < nTriangles; i++)
-    {
-        TriangleEncodeds[i].P1 = glm::vec4(Triangles[i].P1, 1.0);
-        TriangleEncodeds[i].P2 = glm::vec4(Triangles[i].P2, 1.0);
-        TriangleEncodeds[i].P3 = glm::vec4(Triangles[i].P3, 1.0);
-
-        TriangleEncodeds[i].N1 = glm::vec4(Triangles[i].N1, 1.0);
-        TriangleEncodeds[i].N2 = glm::vec4(Triangles[i].N2, 1.0);
-        TriangleEncodeds[i].N3 = glm::vec4(Triangles[i].N3, 1.0);
-
-        TriangleEncodeds[i].MaterialSlot = glm::ivec4(Triangles[i].MaterialSlot, 0.0, 0.0, 0.0);
-    }
-
-    return TriangleEncodeds;
-}
-
-template <typename BVHType>
-std::vector<KH_BRDFMaterialEncoded> KH_Scene<BVHType>::EncodeBSDFMaterials()
-{
-    if constexpr (std::is_same_v<BVHType, KH_BVH>)
-        return std::vector<KH_BRDFMaterialEncoded>();
-
-    const int nMaterials = Materials.size();
-    std::vector<KH_BRDFMaterialEncoded> BSDFMaterialEncodeds(nMaterials);
-
-    for (int i = 0; i < nMaterials; i++)
-    {
-        KH_BRDFMaterial& Mat = Materials[i];
-
-        BSDFMaterialEncodeds[i].Emissive = glm::vec4(Mat.Emissive, 1.0);
-        BSDFMaterialEncodeds[i].BaseColor = glm::vec4(Mat.BaseColor, 1.0);
-        BSDFMaterialEncodeds[i].Param1 = glm::vec4(Mat.Subsurface, Mat.Metallic, Mat.Specular, Mat.SpecularTint);
-        BSDFMaterialEncodeds[i].Param2 = glm::vec4(Mat.Roughness, Mat.Anisotropic, Mat.Sheen, Mat.SheenTint);
-        BSDFMaterialEncodeds[i].Param3 = glm::vec4(Mat.Clearcoat, Mat.ClearcoatGloss, Mat.IOR, Mat.Transmission);
-    }
-
-    return BSDFMaterialEncodeds;
-}
 
 template <typename BVHType>
 std::vector<KH_FlatBVHNodeEncoded> KH_Scene<BVHType>::EncodeLBVHNodes()
@@ -371,16 +258,22 @@ public:
     SceneType DebugBox;
 };
 
-
+using KH_BVHExampleScenes = KH_ExampleScenes<KH_BVHScene>;
 using KH_FlatBVHExampleScenes = KH_ExampleScenes<KH_FlatBVHScene>;
 using KH_LBVHExampleScenes = KH_ExampleScenes<KH_LBVHScene>;
+using KH_GpuLBVHExampleScenes = KH_ExampleScenes<KH_GpuLBVHScene>;
 
 template <typename SceneType>
 void KH_ExampleScenes<SceneType>::InitSingleTriangle()
 {
-    SingleTriangle.BVH.MaxBVHDepth = 11;
-    SingleTriangle.BVH.MaxLeafTriangles = 1;
-    SingleTriangle.BVH.BuildMode = KH_BVH_BUILD_MODE::SAH;
+    if constexpr (requires { SceneType::BVH.bIsBuildOnCPU; })
+    {
+        if constexpr (decltype(SceneType::BVH)::bIsBuildOnCPU) {
+            SingleTriangle.BVH.MaxBVHDepth = 11;
+            SingleTriangle.BVH.MaxLeafTriangles = 1;
+            SingleTriangle.BVH.BuildMode = KH_BVH_BUILD_MODE::SAH;
+        }
+    }
 
     KH_BRDFMaterial Material;
     Material.BaseColor = glm::vec3(1.0, 0.0, 0.0);
@@ -401,10 +294,15 @@ void KH_ExampleScenes<SceneType>::InitSingleTriangle()
 template <typename SceneType>
 void KH_ExampleScenes<SceneType>::InitBunny()
 {
-    Bunny.BVH.MaxBVHDepth = 5;
-    Bunny.BVH.MaxLeafTriangles = 1;
+    if constexpr (requires { SceneType::BVH.bIsBuildOnCPU; })
+    {
+        if constexpr (decltype(SceneType::BVH)::bIsBuildOnCPU) {
+		    Bunny.BVH.MaxBVHDepth = 5;
+		    Bunny.BVH.MaxLeafTriangles = 1;
 
-    Bunny.BVH.BuildMode = KH_BVH_BUILD_MODE::SAH;
+		    Bunny.BVH.BuildMode = KH_BVH_BUILD_MODE::SAH;
+        }
+    }
 
     KH_BRDFMaterial Material1;
     Material1.BaseColor = glm::vec3(1.0, 0.0, 0.0);
@@ -432,8 +330,13 @@ void KH_ExampleScenes<SceneType>::InitBunny()
 template <typename SceneType>
 void KH_ExampleScenes<SceneType>::InitDebugBox()
 {
-    DebugBox.BVH.MaxBVHDepth = 5;
-    DebugBox.BVH.MaxLeafTriangles = 1;
+    if constexpr (requires { SceneType::BVH.bIsBuildOnCPU; })
+    {
+        if constexpr (decltype(SceneType::BVH)::bIsBuildOnCPU) {
+		    DebugBox.BVH.MaxBVHDepth = 5;
+		    DebugBox.BVH.MaxLeafTriangles = 1;
+        }
+    }
 
     glm::vec3 Colors[6] = {
         glm::vec3(1, 0, 0), 

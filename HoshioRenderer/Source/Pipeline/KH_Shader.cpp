@@ -203,22 +203,16 @@ KH_ExampleShaders::KH_ExampleShaders()
 void KH_ExampleShaders::InitShaders()
 {
     TestShader.Create("Assert/Shaders/test.vert", "Assert/Shaders/test.frag");
-    PrintShaderLoadMessage("TestShader");
     AABBShader.Create("Assert/Shaders/DrawAABBs.vert", "Assert/Shaders/DrawAABBs.frag");
-    PrintShaderLoadMessage("AABBShader");
     TestCanvasShader.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/DefaultCanvas.frag");
-    PrintShaderLoadMessage("TestCanvasShader");
-    RayTracingShader1_0.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing1_0.frag");
-    PrintShaderLoadMessage("RayTracingShader1-0");                                                               
-    RayTracingShader1_1.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing1_1.frag");
-    PrintShaderLoadMessage("RayTracingShader1-1");                                                               
-    RayTracingShader1_2.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing1_2.frag");
-    PrintShaderLoadMessage("RayTracingShader1-2");                                                                
-    RayTracingShader1_3.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing1_3.frag");
-    PrintShaderLoadMessage("RayTracingShader1-3");                                                               
-    RayTracingShader2_0.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing2_0.frag");
-    //RayTracingShader2_0.PrintActiveUniform();
-    PrintShaderLoadMessage("RayTracingShader2_0");
+    RayTracingShader1_0.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_0.frag");
+    RayTracingShader1_1.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_1.frag");
+    RayTracingShader1_2.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_2.frag");
+    RayTracingShader1_3.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_3.frag");
+    RayTracingShader2_0.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_0.frag");
+    RayTracingShader2_1.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_1.frag");
+
+    LOG_D(std::format("All Shaders have been loaded."));
 }
 
 void KH_ExampleShaders::PrintShaderLoadMessage(std::string ShaderName)

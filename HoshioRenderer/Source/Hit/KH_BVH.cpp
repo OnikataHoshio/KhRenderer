@@ -7,11 +7,9 @@
 #include "Utils/KH_DebugUtils.h"
 
 
-void KH_IBVH::RenderAABB(KH_Shader& Shader, glm::vec3 Color)
+void KH_IBVH::RenderAABB(KH_Shader& Shader, glm::vec3 Color) const
 {
-	KH_Framebuffer& Framebuffer = KH_Editor::Instance().GetCanvasFramebuffer();
-
-	Framebuffer.Bind();
+	KH_Editor::Instance().BindCanvasFramebuffer();
 
 	Shader.Use();
 	Shader.SetMat4("view", KH_Editor::Instance().Camera.GetViewMatrix());
@@ -35,7 +33,7 @@ void KH_IBVH::RenderAABB(KH_Shader& Shader, glm::vec3 Color)
 	glBindVertexArray(0);
 
 	ModelMats_SSBO.Unbind();
-	Framebuffer.Unbind();
+	KH_Editor::Instance().UnbindCanvasFramebuffer();
 }
 
 void KH_IBVH::UpdateModelMatsSSBO()
@@ -239,13 +237,11 @@ void KH_BVH::BindAndBuild(std::vector<KH_Triangle>& Triangles)
 	BuildBVH();
 	FillModelMatrices(MaxBVHDepth);
 
-	std::string DebugMessage = std::format("Model Range : [({},{},{}),({},{},{})]",
-		Root->AABB.MinPos.x, Root->AABB.MinPos.y, Root->AABB.MinPos.z,
-		Root->AABB.MaxPos.x, Root->AABB.MaxPos.y, Root->AABB.MaxPos.z);
-	LOG_D(DebugMessage);
+	//std::string DebugMessage = std::format("Model Range : [({},{},{}),({},{},{})]",
+	//	Root->AABB.MinPos.x, Root->AABB.MinPos.y, Root->AABB.MinPos.z,
+	//	Root->AABB.MaxPos.x, Root->AABB.MaxPos.y, Root->AABB.MaxPos.z);
+	//LOG_D(DebugMessage);
 }
-
-
 
 std::vector<KH_BVHHitInfo> KH_BVH::Hit(KH_Ray& Ray)
 {
@@ -450,10 +446,10 @@ void KH_FlatBVH::BindAndBuild(std::vector<KH_Triangle>& Triangles)
 	BuildBVH();
 	FillModelMatrices(MaxBVHDepth);
 
-	std::string DebugMessage = std::format("Model Range : [({},{},{}),({},{},{})]",
-		BVHNodes[Root].AABB.MinPos.x, BVHNodes[Root].AABB.MinPos.y, BVHNodes[Root].AABB.MinPos.z,
-		BVHNodes[Root].AABB.MaxPos.x, BVHNodes[Root].AABB.MaxPos.y, BVHNodes[Root].AABB.MaxPos.z);
-	LOG_D(DebugMessage);
+	//std::string DebugMessage = std::format("Model Range : [({},{},{}),({},{},{})]",
+	//	BVHNodes[Root].AABB.MinPos.x, BVHNodes[Root].AABB.MinPos.y, BVHNodes[Root].AABB.MinPos.z,
+	//	BVHNodes[Root].AABB.MaxPos.x, BVHNodes[Root].AABB.MaxPos.y, BVHNodes[Root].AABB.MaxPos.z);
+	//LOG_D(DebugMessage);
 }
 
 std::vector<KH_BVHHitInfo> KH_FlatBVH::Hit(KH_Ray& Ray)
