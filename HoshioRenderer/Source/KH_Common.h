@@ -36,14 +36,18 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/component_wise.hpp>
 #include "Eigen/StdList"
 #include "Eigen/StdVector"
 #include "Eigen/Sparse"
 
 // ================= 辅助库 ==================
-#include "tiny_obj_loader/tiny_obj_loader.h"
-
 #include "magic_enum/magic_enum.hpp"
+
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 // ================= Macro ==================
 #define EPS 1e-6

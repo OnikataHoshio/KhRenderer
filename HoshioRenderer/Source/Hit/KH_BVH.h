@@ -3,7 +3,8 @@
 #include "Pipeline/KH_Buffer.h"
 
 class KH_Shader;
-class KH_Triangle;
+struct KH_SceneObject;
+struct KH_ScenePrimitive;
 
 enum class KH_BVH_SPLIT_MODE
 {
@@ -49,42 +50,46 @@ public:
 protected:
 	static KH_BVH_SPLIT_MODE SelectSplitMode(KH_AABB& AABB);
 
-	static KH_BVHSplitInfo SelectSplitModeSAH(std::vector<KH_Triangle>& Triangles, int BeginIndex, int EndIndex);
+	static KH_BVHSplitInfo SelectSplitModeSAH(std::vector<KH_ScenePrimitive>& Primitives, int BeginIndex, int EndIndex);
 };
 
 class KH_IBVH
 {
 public:
 	KH_IBVH() = default;
-	KH_IBVH(uint32_t MaxBVHDepth, uint32_t MaxLeafTriangles, KH_BVH_BUILD_MODE BuildMode = KH_BVH_BUILD_MODE::Base);
+	KH_IBVH(uint32_t MaxBVHDepth, uint32_t MaxLeafPrimitives, KH_BVH_BUILD_MODE BuildMode = KH_BVH_BUILD_MODE::Base);
 	virtual ~KH_IBVH() = default;
 
-	std::vector<KH_Triangle>* Triangles = nullptr;
+	std::vector<KH_ScenePrimitive> Primitives;
+	uint32_t PrimitiveCount = 0;
+
 	uint32_t MaxBVHDepth = 8;
-	uint32_t MaxLeafTriangles = 8;
+	uint32_t MaxLeafPrimitives = 8;
 
 	std::vector<glm::mat4> ModelMats;
 	uint32_t MatCount = 0;
 
 	KH_BVH_BUILD_MODE BuildMode = KH_BVH_BUILD_MODE::Base;
 
-	//unsigned int ModelMats_SSBO = 0;
 	KH_SSBO<glm::mat4> ModelMats_SSBO;
 
 	static constexpr bool bIsBuildOnCPU = true;
 
 	void RenderAABB(KH_Shader& Shader, glm::vec3 Color) const;
 
-	virtual void BindAndBuild(std::vector<KH_Triangle>& Triangles) = 0;
+	virtual void BindAndBuild(std::vector<KH_SceneObject>& Objects) = 0;
 
 	virtual std::vector<KH_BVHHitInfo> Hit(KH_Ray& Ray) = 0;
 
 protected:
 	virtual void FillModelMatrices(uint32_t TargetDepth) = 0;
 
+	void CollectPrimitives(std::vector<KH_SceneObject>& Objects);
+
 	void UpdateModelMatsSSBO();
 
 	virtual void BuildBVH() = 0;
+
 };
 
 #pragma endregion
@@ -97,9 +102,9 @@ public:
 	std::unique_ptr<KH_BVHNode> Left;
 	std::unique_ptr<KH_BVHNode> Right;
 
-	void BuildNode(std::vector<KH_Triangle>& Triangles, uint32_t BeginIndex, uint32_t EndIndex, uint32_t Depth, uint32_t MaxNum, uint32_t MaxDepth);
+	void BuildNode(std::vector<KH_ScenePrimitive>& Primitives, uint32_t BeginIndex, uint32_t EndIndex, uint32_t Depth, uint32_t MaxNum, uint32_t MaxDepth);
 
-	void BuildNodeSAH(std::vector<KH_Triangle>& Triangles, uint32_t BeginIndex, uint32_t EndIndex, uint32_t Depth, uint32_t MaxNum, uint32_t MaxDepth);
+	void BuildNodeSAH(std::vector<KH_ScenePrimitive>& Primitives, uint32_t BeginIndex, uint32_t EndIndex, uint32_t Depth, uint32_t MaxNum, uint32_t MaxDepth);
 
 	void Hit(std::vector<KH_BVHHitInfo>& HitInfos, KH_Ray& Ray);
 };
@@ -110,10 +115,10 @@ public:
 	std::unique_ptr<KH_BVHNode> Root;
 
 	KH_BVH();
-	KH_BVH(uint32_t MaxBVHDepth, uint32_t MaxLeafTriangles, KH_BVH_BUILD_MODE BuildMode = KH_BVH_BUILD_MODE::Base);
+	KH_BVH(uint32_t MaxBVHDepth, uint32_t MaxLeafPrimitives, KH_BVH_BUILD_MODE BuildMode = KH_BVH_BUILD_MODE::Base);
 	~KH_BVH() override = default;
 
-	void BindAndBuild(std::vector<KH_Triangle>& Triangles) override;
+	void BindAndBuild(std::vector<KH_SceneObject>& Objects) override;
 
 	std::vector<KH_BVHHitInfo> Hit(KH_Ray& Ray) override;
 
@@ -134,9 +139,9 @@ class KH_FlatBVHNode : public KH_IBVHNode
 public:
 	int Left, Right;
 
-	static int BuildNode(std::vector<KH_Triangle>& Triangles, std::vector<KH_FlatBVHNode>& FlatBVHNodes, uint32_t BeginIndex, uint32_t EndIndex, uint32_t Depth, uint32_t MaxNum, uint32_t MaxDepth);
+	static int BuildNode(std::vector<KH_ScenePrimitive>& Primitives, std::vector<KH_FlatBVHNode>& FlatBVHNodes, uint32_t BeginIndex, uint32_t EndIndex, uint32_t Depth, uint32_t MaxNum, uint32_t MaxDepth);
 
-	static int BuildNodeSAH(std::vector<KH_Triangle>& Triangles, std::vector<KH_FlatBVHNode>& FlatBVHNodes, uint32_t BeginIndex, uint32_t EndIndex, uint32_t Depth, uint32_t MaxNum, uint32_t MaxDepth);
+	static int BuildNodeSAH(std::vector<KH_ScenePrimitive>& Primitives, std::vector<KH_FlatBVHNode>& FlatBVHNodes, uint32_t BeginIndex, uint32_t EndIndex, uint32_t Depth, uint32_t MaxNum, uint32_t MaxDepth);
 
 	void Hit(std::vector<KH_BVHHitInfo>& HitInfos, std::vector<KH_FlatBVHNode>& FlatBVHNodes, KH_Ray& Ray);
 };
@@ -150,10 +155,10 @@ public:
 	std::vector<KH_FlatBVHNode> BVHNodes;
 
 	KH_FlatBVH() = default;
-	KH_FlatBVH(uint32_t MaxBVHDepth, uint32_t MaxLeafTriangles, KH_BVH_BUILD_MODE BuildMode = KH_BVH_BUILD_MODE::Base);
+	KH_FlatBVH(uint32_t MaxBVHDepth, uint32_t MaxLeafPrimitives, KH_BVH_BUILD_MODE BuildMode = KH_BVH_BUILD_MODE::Base);
 	~KH_FlatBVH() override = default;
 
-	void BindAndBuild(std::vector<KH_Triangle>& Triangles) override;
+	void BindAndBuild(std::vector<KH_SceneObject>& Objects) override;
 	std::vector<KH_BVHHitInfo> Hit(KH_Ray& Ray) override;
 
 private:

@@ -5,7 +5,8 @@
 KH_Canvas::KH_Canvas()
     :Timer(3.0f)
 {
-    Framebuffer.Create(64, 64);
+    Framebuffers[0].Create(64, 64);
+    Framebuffers[1].Create(64, 64);
 }
 
 void KH_Canvas::Render()
@@ -18,13 +19,14 @@ void KH_Canvas::Render()
         uint32_t viewportWidth = static_cast<uint32_t>(viewportPanelSize.x);
         uint32_t viewportHeight = static_cast<uint32_t>(viewportPanelSize.y);
 
+        KH_Framebuffer& Framebuffer = GetCurrentFramebuffer();
 
         if (viewportWidth != Framebuffer.GetWidth() || viewportHeight != Framebuffer.GetHeight())
         {
             if (viewportPanelSize.x > 0 && viewportPanelSize.y > 0) {
                 Framebuffer.Rescale(viewportWidth, viewportHeight);
                 KH_Editor::Instance().UpdateCanvasExtent(viewportWidth, viewportHeight);
-                glViewport(0, 0, KH_Editor::CanvasWidth, KH_Editor::CanvasHeight);
+                glViewport(0, 0, KH_Editor::GetCanvasWidth(), KH_Editor::GetCanvasHeight());
 
                 Timer.Reset();
             }
@@ -48,6 +50,33 @@ void KH_Canvas::Render()
     ImGui::End();
 
     ImGui::PopStyleVar();
+
+    SwapFramebuffer();
+}
+
+KH_Framebuffer& KH_Canvas::GetCurrentFramebuffer()
+{
+    return Framebuffers[FrameBufferHandle];
+}
+
+KH_Framebuffer& KH_Canvas::GetLastFramebuffer()
+{
+    return Framebuffers[(FrameBufferHandle + 1) % 2];
+}
+
+void KH_Canvas::BindFramebuffer()
+{
+    GetCurrentFramebuffer().Bind();
+}
+
+void KH_Canvas::UnbindFramebuffer()
+{
+    GetCurrentFramebuffer().Unbind();
+}
+
+void KH_Canvas::SwapFramebuffer()
+{
+    FrameBufferHandle = (FrameBufferHandle + 1) % 2; 
 }
 
 
@@ -153,7 +182,7 @@ void KH_GlobalInfo::Render()
 
         if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Indent(20.0f);
-            ImGui::Text("Canvas: %dx%d", KH_Editor::CanvasWidth, KH_Editor::CanvasHeight);
+            ImGui::Text("Canvas: %dx%d", KH_Editor::GetCanvasWidth(), KH_Editor::GetCanvasHeight());
             ImGui::Unindent(20.0f);
         }
 

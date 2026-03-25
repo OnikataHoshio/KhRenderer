@@ -1,19 +1,17 @@
 #include "KH_LBVH.h"
-
-#include "GLFW/glfw3native.h"
-#include "Scene/KH_Object.h"
+#include "Scene/KH_Model.h"
 #include "Utils/KH_DebugUtils.h"
 #include "Utils/KH_Algorithms.h"
 
 #include "Scene/KH_Scene.h"
 
 
-void KH_LBVHNode::Hit(std::vector<KH_BVHHitInfo>& HitInfos, std::vector<KH_LBVHNode>& LBVHNodes, uint32_t TriangleCount, int NodeID,  KH_Ray& Ray)
+void KH_LBVHNode::Hit(std::vector<KH_BVHHitInfo>& HitInfos, std::vector<KH_LBVHNode>& LBVHNodes, uint32_t PrimitiveCount, int NodeID,  KH_Ray& Ray)
 {
 	KH_AABBHitInfo AABBHit = AABB.Hit(Ray);
 	if (!AABBHit.bIsHit) return;
 
-	if (NodeID < TriangleCount)
+	if (NodeID < PrimitiveCount)
 	{
 		KH_BVHHitInfo BVHHitInfo;
 		BVHHitInfo.BeginIndex = Range.x;
@@ -24,37 +22,37 @@ void KH_LBVHNode::Hit(std::vector<KH_BVHHitInfo>& HitInfos, std::vector<KH_LBVHN
 		return;
 	}
 
-	if (Left != KH_LBVH_NULL_NODE)  LBVHNodes[Left].Hit(HitInfos, LBVHNodes, TriangleCount, Left, Ray);
-	if (Right != KH_LBVH_NULL_NODE) LBVHNodes[Right].Hit(HitInfos, LBVHNodes, TriangleCount, Right,  Ray);
+	if (Left != KH_LBVH_NULL_NODE)  LBVHNodes[Left].Hit(HitInfos, LBVHNodes, PrimitiveCount, Left, Ray);
+	if (Right != KH_LBVH_NULL_NODE) LBVHNodes[Right].Hit(HitInfos, LBVHNodes, PrimitiveCount, Right,  Ray);
 }
 
-void KH_LBVH::BindAndBuild(std::vector<KH_Triangle>& Triangles)
+void KH_LBVH::BindAndBuild(std::vector<KH_SceneObject>& Objects)
 {
-	this->Triangles = &Triangles;
+	CollectPrimitives(Objects);
 
 	if (!IsAllDataReady())
 		return;
 
-	TriangleCount = Triangles.size();
+	PrimitiveCount = Primitives.size();
 
-	SortTriangleIndices();
+	SortPrimitiveIndices();
 	FillDeltaBuffer();
 	InitLBVHNodes();
 	BuildBVH();
 	FillModelMatrices(MaxBVHDepth);
 }
 
-void KH_LBVH::BindAndBuild(std::vector<KH_Triangle>& Triangles, KH_AABB AABB)
+void KH_LBVH::BindAndBuild(std::vector<KH_SceneObject>& Objects, KH_AABB AABB)
 {
-	this->Triangles = &Triangles;
+	CollectPrimitives(Objects);
 	this->AABB = AABB;
 
 	if (!IsAllDataReady())
 		return;
 
-	TriangleCount = Triangles.size();
+	PrimitiveCount = Primitives.size();
 
-	SortTriangleIndices();
+	SortPrimitiveIndices();
 	FillDeltaBuffer();
 	InitLBVHNodes();
 	BuildBVH();
@@ -65,39 +63,37 @@ std::vector<KH_BVHHitInfo> KH_LBVH::Hit(KH_Ray& Ray)
 {
 	std::vector<KH_BVHHitInfo> HitInfos;
 	if (Root != KH_FLAT_BVH_NULL_NODE)
-		BVHNodes[Root].Hit(HitInfos, BVHNodes, TriangleCount, Root, Ray);
+		BVHNodes[Root].Hit(HitInfos, BVHNodes, PrimitiveCount, Root, Ray);
 	return HitInfos;
 }
 
-void KH_LBVH::SortTriangleIndices()
+void KH_LBVH::SortPrimitiveIndices()
 {
-	const std::vector<KH_Triangle>& Tris = *Triangles;
-
-	Tri2Mortons.resize(TriangleCount);
-	SortedIndices.resize(TriangleCount);
+	PrimitiveMorton3Ds.resize(PrimitiveCount);
+	SortedIndices.resize(PrimitiveCount);
 
 	glm::vec3 AABB_InvSize = AABB.GetInvSize();
 
-	for (int i = 0; i < TriangleCount; i++)
+	for (int i = 0; i < PrimitiveCount; i++)
 	{
-		glm::vec3 Position = Tris[i].Center;
+		glm::vec3 Position = Primitives[i].Primitive->GetAABBCenter();
 		glm::vec3 p = (Position - AABB.MinPos) * AABB_InvSize;
 		p = glm::clamp(p, glm::vec3(0.0f), glm::vec3(1.0f));
-		Tri2Mortons[i] = KH_MortonCode::Morton3DFloat_IndexAugmentation(p, i);
+		PrimitiveMorton3Ds[i] = KH_MortonCode::Morton3DFloat_IndexAugmentation(p, i);
 	}
 
-	std::ranges::sort(Tri2Mortons);
+	std::ranges::sort(PrimitiveMorton3Ds);
 
-	for (int i = 0; i < TriangleCount; ++i)
+	for (int i = 0; i < PrimitiveCount; ++i)
 	{
-		SortedIndices[i] = static_cast<uint32_t>(Tri2Mortons[i] & 0xFFFFFFFFU);
+		SortedIndices[i] = static_cast<uint32_t>(PrimitiveMorton3Ds[i] & 0xFFFFFFFFU);
 	}
 }
 
 int KH_LBVH::ComputeDelta(int i)
 {
-	uint64_t first = Tri2Mortons[i - 1];
-	uint64_t second = Tri2Mortons[i];
+	uint64_t first = PrimitiveMorton3Ds[i - 1];
+	uint64_t second = PrimitiveMorton3Ds[i];
 	uint64_t diff = first ^ second;
 
 	if (diff == 0) return 64;
@@ -114,13 +110,12 @@ int KH_LBVH::ComputeDelta(int i)
 
 void KH_LBVH::FillDeltaBuffer()
 {
-	const int N = TriangleCount;
-	DeltaBuffer.assign(N + 1, -1);
+	DeltaBuffer.assign(PrimitiveCount + 1, -1);
 
 	DeltaBuffer[0] = -1;
-	DeltaBuffer[N] = -1;
+	DeltaBuffer[PrimitiveCount] = -1;
 
-	for (int i = 1; i < N; i++)
+	for (int i = 1; i < PrimitiveCount; i++)
 	{
 		DeltaBuffer[i] = ComputeDelta(i);
 	}
@@ -128,17 +123,15 @@ void KH_LBVH::FillDeltaBuffer()
 
 void KH_LBVH::InitLBVHNodes()
 {
-	const std::vector<KH_Triangle>& Tris = *Triangles;
-	const int N = TriangleCount;
-	BVHNodes.resize(2 * N - 1);
+	BVHNodes.resize(2 * PrimitiveCount - 1);
 
-	for (int i = 0; i < N; i++)
+	for (int i = 0; i < PrimitiveCount; i++)
 	{
 		BVHNodes[i].Range = glm::ivec2(i, i);
-		BVHNodes[i].AABB.Update(Tris[SortedIndices[i]]);
+		BVHNodes[i].AABB = Primitives[SortedIndices[i]].Primitive->GetAABB();
 	}
 
-	AtomicTags.assign( N - 1, -1);
+	AtomicTags.assign(PrimitiveCount - 1, -1);
 }
 
 
@@ -151,17 +144,16 @@ bool KH_LBVH::IsLeftChild(int NodeID) const
 
 bool KH_LBVH::IsRootNode(int NodeID) const
 {
-	const int N = TriangleCount;
 	glm::ivec2 Range = BVHNodes[NodeID].Range;
-	return Range.x == BVHNodes[0].Range.x && Range.y == BVHNodes[N - 1].Range.y;
+	return Range.x == BVHNodes[0].Range.x && Range.y == BVHNodes[PrimitiveCount - 1].Range.y;
 }
 
 bool KH_LBVH::IsLeafNode(int NodeID) const
 {
-	return NodeID < TriangleCount;
+	return NodeID < PrimitiveCount;
 }
 
-int KH_LBVH::GetTriangleIndices(int NodeID) const
+int KH_LBVH::GetPrimitiveIndices(int NodeID) const
 {
 	if (IsLeafNode(NodeID))
 		return SortedIndices[NodeID];
@@ -170,17 +162,13 @@ int KH_LBVH::GetTriangleIndices(int NodeID) const
 
 void KH_LBVH::BuildBVH()
 {
-	const std::vector<KH_Triangle>& Tris = *Triangles;
-	const int N = TriangleCount;
-
-	if (N == 1)
+	if (PrimitiveCount == 1)
 	{
 		Root = 0;
 		return;
 	}
 
-
-	for (int i = 0; i < N; i++)
+	for (int i = 0; i < PrimitiveCount; i++)
 	{
 		int NodeID = i;
 		int ParentLocalID;
@@ -191,7 +179,7 @@ void KH_LBVH::BuildBVH()
 			{
 				ParentLocalID = BVHNodes[NodeID].Range.y;
 				AtomicTags[ParentLocalID] += 1;
-				ParentGlobalID = ParentLocalID + N;
+				ParentGlobalID = ParentLocalID + PrimitiveCount;
 				BVHNodes[ParentGlobalID].Range.x = BVHNodes[NodeID].Range.x;
 				BVHNodes[ParentGlobalID].Left = NodeID;
 			}
@@ -199,7 +187,7 @@ void KH_LBVH::BuildBVH()
 			{
 				ParentLocalID = BVHNodes[NodeID].Range.x - 1;
 				AtomicTags[ParentLocalID] += 1;
-				ParentGlobalID = ParentLocalID + N;
+				ParentGlobalID = ParentLocalID + PrimitiveCount;
 				BVHNodes[ParentGlobalID].Range.y = BVHNodes[NodeID].Range.y;
 				BVHNodes[ParentGlobalID].Right = NodeID;
 			}
@@ -222,21 +210,14 @@ void KH_LBVH::BuildBVH()
 
 bool KH_LBVH::IsAllDataReady() const
 {
-	return CheckTriangles() && CheckAABB();
+	return CheckPrimitives() && CheckAABB();
 }
 
-bool KH_LBVH::CheckTriangles() const
+bool KH_LBVH::CheckPrimitives() const
 {
-	if (Triangles == nullptr)
+	if (Primitives.empty())
 	{
-		std::string DebugMessage = std::format("KH_LBVH::CheckTriangles: Triangles array pointer has not been set!");
-		LOG_E(DebugMessage);
-		return false;
-	}
-
-	if (Triangles->empty())
-	{
-		std::string DebugMessage = std::format("KH_LBVH::CheckTriangles: Triangles array is empty!");
+		std::string DebugMessage = std::format("KH_LBVH::CheckPrimitives: Primitives array is empty!");
 		LOG_E(DebugMessage);
 		return false;
 	}
@@ -288,7 +269,7 @@ void KH_LBVH::FillModelMatrices(uint32_t TargetDepth)
 
 void KH_GpuLBVH::Initialize()
 {
-	this->ElementCount = pScene->Triangles.size();
+	this->ElementCount = pScene->PrimitiveCount;
 	this->LBVHNodeCount = 2 * ElementCount - 1;
 	//this->pTriangles = &Triangles;
 	this->AABB = pScene->AABB;
@@ -304,10 +285,12 @@ void KH_GpuLBVH::SetSSBOs()
 {
 	SetSSBOBindings();
 
-	std::vector<glm::vec4> Centers(ElementCount);
-	std::vector<KH_Triangle>& Triangles = pScene->Triangles;
-	for (int i = 0; i < ElementCount; i++)
-		Centers[i] = glm::vec4(Triangles[i].Center, 1.0f);
+	std::vector<glm::vec4> Centers;
+	Centers.reserve(ElementCount);
+	std::vector<KH_SceneObject>& Objects = pScene->Objects;
+	for (auto& Object : Objects)
+		Object.Object->CollectPrimitiveAABBCenters(Centers);
+
 	CentersSSBO.SetData(Centers, GL_DYNAMIC_DRAW);
 
 	if (Morton3DSSBO.GetCount() != ElementCount)
@@ -417,7 +400,7 @@ void KH_GpuLBVH::RunPrecomputeDelta() const
 
 void KH_GpuLBVH::RunBuildLBVH() const
 {
-	pScene->Triangle_SSBO.Bind();
+	pScene->Primitive_SSBO.Bind();
 	Morton3DSSBO.Bind();
 	LBVHNodeSSBO.Bind();
 	AuxiliarySSBO.Bind();
@@ -453,14 +436,13 @@ void KH_GpuLBVH::RenderAABB(const KH_Shader& Shader, glm::vec3 Color) const
 
 	ModelMats_SSBO.Bind();
 
-	glBindVertexArray(KH_DefaultModels::Instance().EmptyCube.VAO);
+	glBindVertexArray(KH_DefaultModels::Instance().EmptyCube.GetVAO());
 	glDrawElementsInstanced(
-		KH_DefaultModels::Instance().EmptyCube.GetDrawMode(),
-		static_cast<GLsizei>(KH_DefaultModels::Instance().Cube.GetIndicesSize()),
+		GL_LINES,
+		KH_DefaultModels::Instance().Cube.GetNumIndices(),
 		GL_UNSIGNED_INT,
 		0,
-		static_cast<GLsizei>(LBVHNodeCount)
-	);
+		LBVHNodeCount);
 	glBindVertexArray(0);
 
 	ModelMats_SSBO.Unbind();
@@ -529,10 +511,10 @@ void KH_GpuLBVH::RunRadixSort2uiv_Inner(int BitShift) const
 
 bool KH_GpuLBVH::CheckElementCount(KH_LBVH& CPU_LBVH) const
 {
-	if (ElementCount != CPU_LBVH.TriangleCount)
+	if (ElementCount != CPU_LBVH.PrimitiveCount)
 	{
 		LOG_E(std::format(
-			"KH_GpuLBVH::CheckElementCount: ElementCount({}) is inconsistent with the TriangleCount({}) of CPU_LBVH", ElementCount, CPU_LBVH.TriangleCount
+			"KH_GpuLBVH::CheckElementCount: ElementCount({}) is inconsistent with the TriangleCount({}) of CPU_LBVH", ElementCount, CPU_LBVH.PrimitiveCount
 		));
 		return false;
 	}
@@ -548,18 +530,16 @@ bool KH_GpuLBVH::CheckMorton3D(KH_LBVH& CPU_LBVH) const
 	for (int i = 0; i < ElementCount; i++)
 	{
 		const uint64_t JointMorton3D = static_cast<uint64_t>(Morton3D[i].x) << 32u | static_cast<uint64_t>(Morton3D[i].y);
-		if (JointMorton3D != CPU_LBVH.Tri2Mortons[i])
+		if (JointMorton3D != CPU_LBVH.PrimitiveMorton3Ds[i])
 		{
 			LOG_E(std::format(
 				"KH_GpuLBVH::CheckMorton3D: Morton3D[{}]({:#018x}) is inconsistent with the Morton3D[{}]({:#018x}) of CPU_LBVH",
-				i, JointMorton3D, i, CPU_LBVH.Tri2Mortons[i]
+				i, JointMorton3D, i, CPU_LBVH.PrimitiveMorton3Ds[i]
 			));
 
 			bIsConsistent = false;
 		}
 	}
-
-
 
 	if (bIsConsistent)
 	{

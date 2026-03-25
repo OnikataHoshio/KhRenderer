@@ -22,36 +22,43 @@ class KH_Canvas : public KH_Panel
 {
 public:
 	KH_Canvas();
-	virtual ~KH_Canvas() override = default;
+	~KH_Canvas() override = default;
 
-	virtual void Render() override;
+	void Render() override;
 
-	KH_Framebuffer Framebuffer;
+	KH_Framebuffer& GetCurrentFramebuffer();
+	KH_Framebuffer& GetLastFramebuffer();
+
+	void BindFramebuffer();
+	void UnbindFramebuffer();
 
 private:
+	void SwapFramebuffer();
+
+	uint32_t FrameBufferHandle = 0;
+	KH_Framebuffer Framebuffers[2];
+	KH_Framebuffer PostProcessFrameBuffer;
 	KH_Timer Timer;
 };
-
 
 class KH_Console : public KH_Panel
 {
 public:
 	KH_Console() = default;
-	virtual ~KH_Console() override = default;
+	~KH_Console() override = default;
 
-	virtual void Render() override;
+	void Render() override;
 
 	static std::vector<KH_LOG_MESSAGE> LogMessages;
-
 };
 
 class KH_Setting : public KH_Panel
 {
 public:
 	KH_Setting() = default;
-	virtual ~KH_Setting() override = default;
+	~KH_Setting() override = default;
 
-	virtual void Render() override;
+	void Render() override;
 };
 
 
@@ -59,7 +66,7 @@ class KH_GlobalInfo : public KH_Panel
 {
 public:
 	KH_GlobalInfo() = default;
-	virtual ~KH_GlobalInfo() override = default;
+	 ~KH_GlobalInfo() override = default;
 
-	virtual void Render() override;
+	 void Render() override;
 };

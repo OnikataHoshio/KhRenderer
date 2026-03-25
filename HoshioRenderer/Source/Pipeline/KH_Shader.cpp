@@ -1,5 +1,6 @@
 #include "KH_Shader.h"
 #include "Utils/KH_DebugUtils.h"
+#include "Editor/KH_Editor.h"
 
 KH_Shader::KH_Shader(const char* vertexPath, const char* fragmentPath)
 {
@@ -138,6 +139,18 @@ void KH_Shader::SetMat4(const std::string& name, const glm::mat4& mat) const
     glUniformMatrix4fv(location, 1, GL_FALSE, &mat[0][0]);
 }
 
+void KH_Shader::SetUvec2(const std::string& name, const glm::uvec2& value) const
+{
+    unsigned int location = glGetUniformLocation(ID, name.c_str());
+    glUniform2uiv(location, 1, &value[0]);
+}
+
+void KH_Shader::SetVec2(const std::string& name, const glm::vec2& value) const
+{
+    unsigned int location = glGetUniformLocation(ID, name.c_str());
+    glUniform2fv(location, 1, &value[0]);
+}
+
 void KH_Shader::SetVec3(const std::string& name, const glm::vec3& value) const
 {
     unsigned int location = glGetUniformLocation(ID, name.c_str());
@@ -195,6 +208,24 @@ void KH_Shader::CheckCompileErrors(unsigned int shader, std::string type)
     }
 }
 
+void KH_ShaderHelper::SetupCommonMatrices(KH_Shader& Shader, const glm::mat4& model, const glm::mat4& view,
+	const glm::mat4& projection)
+{
+    Shader.Use();
+    Shader.SetMat4("model", model);
+    Shader.SetMat4("view", view);
+    Shader.SetMat4("projection", projection);
+}
+
+void KH_ShaderHelper::SetupTestShader(KH_Shader& Shader,  glm::vec3 Color)
+{
+    Shader.Use();
+    Shader.SetMat4("model", glm::mat4(1.0f));
+    Shader.SetMat4("view", KH_Editor::Instance().Camera.GetViewMatrix());
+    Shader.SetMat4("projection", KH_Editor::Instance().Camera.GetProjMatrix());
+    Shader.SetVec3("Color", Color);
+}
+
 KH_ExampleShaders::KH_ExampleShaders()
 {
     InitShaders();
@@ -211,7 +242,9 @@ void KH_ExampleShaders::InitShaders()
     RayTracingShader1_3.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_3.frag");
     RayTracingShader2_0.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_0.frag");
     RayTracingShader2_1.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_1.frag");
-
+    RayTracingShader2_2.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_2.frag");
+    RayTracingShader2_3.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_3.frag");
+    RayTracingShader2_4.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_4.frag");
     LOG_D(std::format("All Shaders have been loaded."));
 }
 

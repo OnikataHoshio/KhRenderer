@@ -6,7 +6,8 @@ in vec3 CanvasPos;
 struct Triangle{
     vec4 P1, P2, P3;
     vec4 N1, N2, N3;
-    ivec4 MaterialSlot;
+    ivec2 PrimitiveType;
+    ivec2 MaterialSlot;
 };
 
 struct BRDFMaterial{

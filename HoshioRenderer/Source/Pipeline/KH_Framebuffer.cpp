@@ -1,4 +1,5 @@
 #include "KH_Framebuffer.h"
+#include "KH_Shader.h"
 
 KH_Framebuffer::KH_Framebuffer()
 {
@@ -29,7 +30,7 @@ void KH_Framebuffer::Create(uint32_t width, uint32_t height)
     // 1. 创建颜色附件纹理
     glGenTextures(1, &TextureID);
     glBindTexture(GL_TEXTURE_2D, TextureID);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -69,6 +70,19 @@ void KH_Framebuffer::Rescale(uint32_t width, uint32_t height) {
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
 }
+
+void KH_Framebuffer::ActiveAndBindTexture(KH_Shader& Shader, const std::string& Name, uint32_t Unit) const
+{
+    glActiveTexture(GL_TEXTURE0 + Unit);
+    glBindTexture(GL_TEXTURE_2D, TextureID);
+    Shader.SetInt(Name, Unit);
+}
+
+void KH_Framebuffer::UnbindTexture() const
+{
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 
 uint32_t KH_Framebuffer::GetWidth()
 {

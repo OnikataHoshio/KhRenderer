@@ -18,18 +18,37 @@ public:
 	void BindCanvasFramebuffer();
     void UnbindCanvasFramebuffer();
 
-    GLFWwindow* GLFWwindow();
+    const KH_Framebuffer& GetLastFramebuffer();
+
+    void ResetFrameCounter();
+    uint32_t GetFrameCounter() const;
+
+    static void SetEditorWidth(uint32_t Width);
+    static void SetEditorHeight(uint32_t Height);
+    static void SetCanvasWidth(uint32_t Width);
+    static void SetCanvasHeight(uint32_t Height);
+    static void SetTitle(std::string Title);
+
+    static uint32_t GetEditorWidth();
+    static uint32_t GetEdtiorHeight();
+    static uint32_t GetCanvasWidth();
+    static uint32_t GetCanvasHeight();
+    static const std::string& GetTitle();
+
+    GLFWwindow* GLFWwindow() const;
 
     KH_Camera Camera;
     KH_Window Window;
 
+private:
     static uint32_t EditorWidth;
     static uint32_t EditorHeight;
     static uint32_t CanvasWidth;
     static uint32_t CanvasHeight;
     static std::string Title;
 
-private:
+    uint32_t FrameCounter = 0;
+
     KH_Canvas RenderView;
     KH_Console Console;
     KH_Setting Setting;
@@ -45,7 +64,6 @@ private:
 
     void BeginImgui();
     void EndImgui();
-
 
 
 };

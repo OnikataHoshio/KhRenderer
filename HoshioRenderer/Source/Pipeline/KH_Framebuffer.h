@@ -2,6 +2,8 @@
 
 #include "KH_Common.h"
 
+class KH_Shader;
+
 class KH_Framebuffer {
 public:
     KH_Framebuffer();
@@ -12,6 +14,10 @@ public:
     void Bind() const;
     void Unbind() const;
     void Rescale(uint32_t width, uint32_t height);
+
+    void ActiveAndBindTexture(KH_Shader& Shader, const std::string& Name, uint32_t Unit = 0) const;
+
+    void UnbindTexture() const;
 
     uint32_t GetWidth();
     uint32_t GetHeight();

@@ -1,11 +1,10 @@
 #include "KH_Scene.h"
 #include "Editor/KH_Editor.h"
 #include "Pipeline/KH_Shader.h"
-#include "Utils/KH_DebugUtils.h"
+#include "Pipeline/KH_Texture.h"
 
 void KH_SceneBase::SetCameraParamUBO()
 {
-
     KH_CameraParam CameraParam;
     const KH_Camera& Camera = KH_Editor::Instance().Camera;
     CameraParam.AspectAndFovy = glm::vec4(Camera.Aspect, Camera.Fovy, 0.0f, 0.0f);
@@ -23,28 +22,27 @@ void KH_SceneBase::SetAndBindCameraParamUB0()
     CameraParam_UB0.Bind();
 }
 
-std::vector<KH_TriangleEncoded> KH_SceneBase::EncodeTriangles() const
+std::vector<KH_PrimitiveEncoded> KH_SceneBase::EncodePrimitives()
 {
-    const int nTriangles = Triangles.size();
-    std::vector<KH_TriangleEncoded> TriangleEncodeds(nTriangles);
+    std::vector<KH_PrimitiveEncoded> Encoded;
 
-    for (int i = 0; i < nTriangles; i++)
+    PrimitiveCount = 0;
+    for (int i = 0; i < Objects.size(); i++)
     {
-        TriangleEncodeds[i].P1 = glm::vec4(Triangles[i].P1, 1.0);
-        TriangleEncodeds[i].P2 = glm::vec4(Triangles[i].P2, 1.0);
-        TriangleEncodeds[i].P3 = glm::vec4(Triangles[i].P3, 1.0);
-
-        TriangleEncodeds[i].N1 = glm::vec4(Triangles[i].N1, 1.0);
-        TriangleEncodeds[i].N2 = glm::vec4(Triangles[i].N2, 1.0);
-        TriangleEncodeds[i].N3 = glm::vec4(Triangles[i].N3, 1.0);
-
-        TriangleEncodeds[i].MaterialSlot = glm::ivec4(Triangles[i].MaterialSlot, 0.0, 0.0, 0.0);
+        PrimitiveCount += Objects[i].Object->GetPrimitiveCount();
     }
 
-    return TriangleEncodeds;
+    Encoded.reserve(PrimitiveCount);
+
+    for (const auto& sceneObject : Objects)
+    {
+        sceneObject.Object->EncodePrimitives(Encoded, sceneObject.MaterialSlotID);
+    }
+
+    return Encoded;
 }
 
-std::vector<KH_BRDFMaterialEncoded> KH_SceneBase::EncodeBSDFMaterials() const
+std::vector<KH_BRDFMaterialEncoded> KH_SceneBase::EncodeBRDFMaterials() const
 {
     const int nMaterials = Materials.size();
     std::vector<KH_BRDFMaterialEncoded> BSDFMaterialEncodeds(nMaterials);
@@ -63,85 +61,49 @@ std::vector<KH_BRDFMaterialEncoded> KH_SceneBase::EncodeBSDFMaterials() const
     return BSDFMaterialEncodeds;
 }
 
-void KH_SceneBase::LoadObj(const std::string& path, float scale, int MaterialSlot)
+const std::vector<KH_SceneObject>& KH_SceneBase::GetObjects() const
 {
-    tinyobj::ObjReader reader;
-    if (!reader.ParseFromFile(path)) {
-        std::cerr << "TinyObjReader Error: " << reader.Error() << std::endl;
-        return;
-    }
-
-    const auto& attrib = reader.GetAttrib();
-    const auto& shapes = reader.GetShapes();
-
-
-    size_t totalIndices = 0;
-    for (const auto& shape : shapes) totalIndices += shape.mesh.indices.size();
-    Triangles.reserve(totalIndices / 3);
-
-    std::vector<glm::vec3> vertexNormals(attrib.vertices.size() / 3, glm::vec3(0.0f));
-
-    for (const auto& shape : shapes) {
-        size_t index_offset = 0;
-        for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
-            tinyobj::index_t idx0 = shape.mesh.indices[index_offset + 0];
-            tinyobj::index_t idx1 = shape.mesh.indices[index_offset + 1];
-            tinyobj::index_t idx2 = shape.mesh.indices[index_offset + 2];
-
-            glm::vec3 p0(attrib.vertices[3 * idx0.vertex_index + 0], attrib.vertices[3 * idx0.vertex_index + 1], attrib.vertices[3 * idx0.vertex_index + 2]);
-            glm::vec3 p1(attrib.vertices[3 * idx1.vertex_index + 0], attrib.vertices[3 * idx1.vertex_index + 1], attrib.vertices[3 * idx1.vertex_index + 2]);
-            glm::vec3 p2(attrib.vertices[3 * idx2.vertex_index + 0], attrib.vertices[3 * idx2.vertex_index + 1], attrib.vertices[3 * idx2.vertex_index + 2]);
-
-            glm::vec3 faceNormal = glm::cross(p1 - p0, p2 - p0);
-
-            vertexNormals[idx0.vertex_index] += faceNormal;
-            vertexNormals[idx1.vertex_index] += faceNormal;
-            vertexNormals[idx2.vertex_index] += faceNormal;
-
-            index_offset += 3;
-        }
-    }
-
-    for (const auto& shape : shapes) {
-        size_t index_offset = 0;
-        for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
-            tinyobj::index_t idx[3];
-            glm::vec3 p[3], n[3];
-
-            for (size_t v = 0; v < 3; v++) {
-                idx[v] = shape.mesh.indices[index_offset + v];
-                p[v] = { attrib.vertices[3 * idx[v].vertex_index + 0], attrib.vertices[3 * idx[v].vertex_index + 1], attrib.vertices[3 * idx[v].vertex_index + 2] };
-
-                n[v] = glm::normalize(vertexNormals[idx[v].vertex_index]);
-            }
-
-            Triangles.emplace_back(scale * p[0], scale * p[1], scale * p[2], n[0], n[1], n[2], MaterialSlot);
-
-            AABB.Merge(Triangles.back());
-
-            index_offset += 3;
-        }
-    }
+    return Objects;
 }
 
-void KH_SceneBase::AddTriangles(const KH_Triangle& Triangle)
+KH_Model& KH_SceneBase::AddModel(int MaterialSlotID, const std::string& Path)
 {
-    Triangles.emplace_back(Triangle);
-    AABB.Merge(Triangles.back());
+    auto obj = std::make_unique<KH_Model>(Path);
+    KH_Model& ref = *obj;
+
+    Objects.push_back({
+        std::move(obj),
+        MaterialSlotID
+        });
+
+    return ref;
+}
+
+KH_Triangle& KH_SceneBase::AddTriangle(int MaterialSlotID, KH_Triangle Triangle)
+{
+    auto obj = std::make_unique<KH_Triangle>(Triangle);
+    KH_Triangle& ref = *obj;
+
+    Objects.push_back({
+        std::move(obj),
+        MaterialSlotID
+        });
+
+    return ref;
 }
 
 void KH_SceneBase::Clear()
 {
-    Triangles.clear();
+    Objects.clear();
     AABB.Reset();
 }
 
 void KH_Scene<KH_GpuLBVH>::SetSSBOs()
 {
-    std::vector<KH_TriangleEncoded> TriangleEncodeds = EncodeTriangles();
-    std::vector<KH_BRDFMaterialEncoded> BSDFMaterialEncodeds = EncodeBSDFMaterials();
+    std::vector<KH_PrimitiveEncoded> PrimitiveEncodeds = EncodePrimitives();
+    std::vector<KH_BRDFMaterialEncoded> BSDFMaterialEncodeds = EncodeBRDFMaterials();
 
-    Triangle_SSBO.SetData(TriangleEncodeds);
+    Primitive_SSBO.SetData(PrimitiveEncodeds);
     Material_SSBO.SetData(BSDFMaterialEncodeds);
 }
 
@@ -151,31 +113,45 @@ void KH_Scene<KH_GpuLBVH>::SetRayTracingParam(KH_Shader& Shader)
 
     const KH_Camera& Camera = KH_Editor::Instance().Camera;
 
-    Triangle_SSBO.Bind();
+    Primitive_SSBO.Bind();
     BVH.Morton3DSSBO.Bind();
     BVH.LBVHNodeSSBO.Bind();
     BVH.AuxiliarySSBO.Bind();
     Material_SSBO.Bind();
 
-    Shader.SetInt("LBVHNodeCount", BVH.LBVHNodeCount);
+    Shader.SetInt("uLBVHNodeCount", BVH.LBVHNodeCount);
+    Shader.SetUint("uFrameCounter", KH_Editor::Instance().GetFrameCounter());
+    Shader.SetUvec2("uResolution", glm::uvec2(KH_Editor::GetCanvasWidth(), KH_Editor::GetCanvasHeight()));
+
+    KH_Editor::Instance().GetLastFramebuffer().ActiveAndBindTexture(Shader, "uLastFrame", 0);
+    KH_ExampleTextures::Instance().FirePlaceHDR.Bind(Shader, "uSkybox", 1);
 
     SetAndBindCameraParamUB0();
+}
+
+void KH_Scene<KH_GpuLBVH>::UpdateAABB()
+{
+    for (auto& Object :Objects)
+    {
+        AABB.Merge(Object.Object->GetAABB());
+    }
 }
 
 void KH_Scene<KH_GpuLBVH>::BindAndBuild()
 {
     SetSSBOs();
+    UpdateAABB();
     BVH.BindAndBuild(this);
 }
 
 void KH_Scene<KH_GpuLBVH>::Render()
 {
-    SetRayTracingParam(KH_ExampleShaders::Instance().RayTracingShader2_1);
+    SetRayTracingParam(KH_ExampleShaders::Instance().RayTracingShader2_4);
 
     KH_Editor::Instance().BindCanvasFramebuffer();
 
-    glBindVertexArray(KH_DefaultModels::Instance().Plane.VAO);
-    glDrawElements(KH_DefaultModels::Instance().Plane.GetDrawMode(), static_cast<GLsizei>(KH_DefaultModels::Instance().Plane.GetIndicesSize()), GL_UNSIGNED_INT, 0);
+    glBindVertexArray(KH_DefaultModels::Instance().Plane.GetVAO());
+    glDrawElements(GL_TRIANGLES, KH_DefaultModels::Instance().Plane.GetNumIndices(), GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
     KH_Editor::Instance().UnbindCanvasFramebuffer();

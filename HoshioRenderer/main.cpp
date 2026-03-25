@@ -1,6 +1,5 @@
 #include "Editor/KH_Editor.h"
 #include "Pipeline/KH_Shader.h"
-#include "Scene/KH_Object.h"
 #include "Hit/KH_LBVH.h"
 #include "Renderer/KH_Renderer.h"
 #include "Scene/KH_Scene.h"
@@ -8,13 +7,12 @@
 
 int main()
 {
-	KH_Editor::EditorWidth = 1280;
-	KH_Editor::EditorHeight = 920;
-	KH_Editor::Title = "KH_Renderer";
+	KH_Editor::SetEditorWidth(1280);
+	KH_Editor::SetEditorHeight(920);
+	KH_Editor::SetTitle("KH_Renderer");
 	KH_Editor::Instance();
 
 	KH_Model& Bunny = KH_DefaultModels::Instance().Bunny;
-	KH_Model& MortonCurve = KH_DefaultModels::Instance().MortonCurve;
 	KH_FlatBVHScene& FlatBVHBunnyScene = KH_FlatBVHExampleScenes::Instance().Bunny;
 	KH_FlatBVHScene& FlatBVHSingleTriangleScene = KH_FlatBVHExampleScenes::Instance().SingleTriangle;
 	KH_FlatBVHScene& FlatBVHDebugBoxScene = KH_FlatBVHExampleScenes::Instance().DebugBox;
@@ -33,19 +31,22 @@ int main()
 	//GpuLBVHBunnyScene.BVH.CheckAllData(LBVHBunnyScene.BVH);
 	//GpuLBVHDebugBoxScene.BVH.CheckAllData(LBVHDebugBoxScene.BVH);
 
+	glEnable(GL_DEPTH_TEST);
+	glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
 	while (!glfwWindowShouldClose(KH_Editor::Instance().GLFWwindow()))
 	{
 		KH_Editor::Instance().BeginRender();
 
 		KH_Editor::Instance().BindCanvasFramebuffer();
-		glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-		KH_Editor::Instance().UnbindCanvasFramebuffer();
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+		//KH_ShaderHelper::SetupTestShader(TestShader, glm::vec3(1.0f, 1.0f, 1.0f));
 		//Bunny.Render(TestShader);
-		//MortonCurve.Render(TestShader);
+
 		//FlatBVHBunnyScene.BVH.RenderAABB(AABBShader, glm::vec3(1.0f, 1.0f, 1.0f));
+
 		//FlatBVHDebugBoxScene.BVH.RenderAABB(AABBShader, glm::vec3(1.0f, 1.0f, 1.0f));
 		//LBVHBunnyScene.BVH.RenderAABB(AABBShader, glm::vec3(1.0f, 1.0f, 1.0f));
 		//GpuLBVHBunnyScene.BVH.RenderAABB(AABBShader, glm::vec3(1.0f, 1.0f, 1.0f));
@@ -61,6 +62,7 @@ int main()
 		//GpuLBVHDebugBoxScene.Render();
 		GpuLBVHBunnyScene.Render();
 
+		KH_Editor::Instance().UnbindCanvasFramebuffer();
 		KH_Editor::Instance().EndRender();
 	}
 

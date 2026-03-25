@@ -81,7 +81,7 @@ void KH_Window::Initialize()
         return;
     }
 
-    glViewport(0, 0, KH_Editor::CanvasWidth, KH_Editor::CanvasHeight);
+    glViewport(0, 0, KH_Editor::GetCanvasWidth(), KH_Editor::GetCanvasHeight());
     glfwSetWindowUserPointer(Window, this);
     glfwSetFramebufferSizeCallback(Window, FramebufferSizeCallback);
     glfwSetCursorPosCallback(Window, MouseMovementCallback);

@@ -1,6 +1,5 @@
 #pragma once
 #include "KH_Common.h"
-
 #include "Scene/KH_Scene.h"
 
 struct KH_HitResult;

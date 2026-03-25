@@ -11,12 +11,62 @@ KH_Editor& KH_Editor::Instance()
 	return instance;
 }
 
-void KH_Editor::UnbindCanvasFramebuffer()
+uint32_t KH_Editor::GetFrameCounter() const
 {
-    RenderView.Framebuffer.Unbind();
+    return FrameCounter;
 }
 
-GLFWwindow* KH_Editor::GLFWwindow()
+void KH_Editor::SetEditorWidth(uint32_t Width)
+{
+    EditorWidth = Width;
+}
+
+void KH_Editor::SetEditorHeight(uint32_t Height)
+{
+    EditorHeight = Height;
+}
+
+void KH_Editor::SetCanvasWidth(uint32_t Width)
+{
+    CanvasWidth = Width;
+}
+
+void KH_Editor::SetCanvasHeight(uint32_t Height)
+{
+    CanvasWidth = Height;
+}
+
+void KH_Editor::SetTitle(std::string Title)
+{
+    KH_Editor::Title = Title;
+}
+
+uint32_t KH_Editor::GetEditorWidth()
+{
+    return EditorWidth;
+}
+
+uint32_t KH_Editor::GetEdtiorHeight()
+{
+    return EditorHeight;
+}
+
+uint32_t KH_Editor::GetCanvasWidth()
+{
+    return CanvasWidth;
+}
+
+uint32_t KH_Editor::GetCanvasHeight()
+{
+    return CanvasHeight;
+}
+
+const std::string& KH_Editor::GetTitle()
+{
+    return Title;
+}
+
+GLFWwindow* KH_Editor::GLFWwindow() const
 {
 	return Window.Window;
 }
@@ -36,6 +86,7 @@ void KH_Editor::EndRender()
     GlobalInfo.Render();
     EndImgui();
 	Window.EndRender();
+    FrameCounter += 1;
 }
 
 void KH_Editor::UpdateCanvasExtent(uint32_t Width, uint32_t Height)
@@ -46,11 +97,29 @@ void KH_Editor::UpdateCanvasExtent(uint32_t Width, uint32_t Height)
     Camera.Width = Width;
     Camera.Height = Height;
     Camera.UpdateAspect();
+
+    ResetFrameCounter();
+
 }
 
 void KH_Editor::BindCanvasFramebuffer()
 {
-    RenderView.Framebuffer.Bind();
+    RenderView.BindFramebuffer();
+}
+
+void KH_Editor::UnbindCanvasFramebuffer()
+{
+    RenderView.UnbindFramebuffer();
+}
+
+const KH_Framebuffer& KH_Editor::GetLastFramebuffer()
+{
+    return RenderView.GetLastFramebuffer();
+}
+
+void KH_Editor::ResetFrameCounter()
+{
+    FrameCounter = 0;
 }
 
 KH_Editor::KH_Editor()

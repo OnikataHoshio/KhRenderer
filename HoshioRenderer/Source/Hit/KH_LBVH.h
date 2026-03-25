@@ -5,8 +5,6 @@
 #include "KH_BVH.h"
 #include "Pipeline/KH_Shader.h"
 
-class KH_Triangle;
-
 struct KH_LBVHNodeEncoded
 {
 	glm::ivec4 Param1; //(Left, Right, bIsLeaf, )
@@ -26,7 +24,7 @@ public:
 	KH_AABB AABB;
 	glm::ivec2 Range = glm::ivec2(0);
 
-	void Hit(std::vector<KH_BVHHitInfo>& HitInfos, std::vector<KH_LBVHNode>& LBVHNodes, uint32_t TriangleCount, int NodeID, KH_Ray& Ray);
+	void Hit(std::vector<KH_BVHHitInfo>& HitInfos, std::vector<KH_LBVHNode>& LBVHNodes, uint32_t PrimitiveCount, int NodeID, KH_Ray& Ray);
 };
 
 class KH_GpuLBVH;
@@ -44,18 +42,18 @@ public:
 	std::vector<KH_LBVHNode> BVHNodes;
 	std::vector<uint32_t> SortedIndices;
 
-	void BindAndBuild(std::vector<KH_Triangle>& Triangles) override;
+	void BindAndBuild(std::vector<KH_SceneObject>& Objects) override;
 
-	void BindAndBuild(std::vector<KH_Triangle>& Triangles, KH_AABB AABB);
+	void BindAndBuild(std::vector<KH_SceneObject>& Objects, KH_AABB AABB);
 
 	bool IsLeafNode(int NodeID) const;
 
-	int GetTriangleIndices(int NodeID) const;
+	int GetPrimitiveIndices(int NodeID) const;
 
 	std::vector<KH_BVHHitInfo> Hit(KH_Ray& Ray) override;
 
 private:
-	void SortTriangleIndices();
+	void SortPrimitiveIndices();
 
 	void FillDeltaBuffer();
 
@@ -71,15 +69,14 @@ private:
 
 	bool IsAllDataReady() const;
 
-	bool CheckTriangles() const;
+	bool CheckPrimitives() const;
 
 	bool CheckAABB() const;
 
 	void FillModelMatrices(uint32_t TargetDepth) override;
 
-	uint32_t TriangleCount = 0;
 
-	std::vector<uint64_t> Tri2Mortons;
+	std::vector<uint64_t> PrimitiveMorton3Ds;
 
 	std::vector<int> DeltaBuffer;
 
@@ -169,5 +166,4 @@ private:
 	bool CheckRootAndDelta(KH_LBVH& CPU_LBVH) const;
 	bool CheckAtomicFlags(KH_LBVH& CPU_LBVH) const;
 	bool CheckLBVHNodes(KH_LBVH& CPU_LBVH) const;
-
 };

@@ -17,8 +17,8 @@ KH_BaseMaterial& Material = KH_DefaultMaterial::Instance().BaseMaterial1;
 
 void KH_RendererBase::Render(KH_BVHScene& Scene)
 {
-	const int Width = KH_Editor::CanvasWidth;
-	const int Height = KH_Editor::CanvasHeight;
+	const int Width = KH_Editor::GetCanvasWidth();
+	const int Height = KH_Editor::GetCanvasHeight();
 	const int Channel = 3;
 	const unsigned int TotalBytes = Width * Height * Channel;
 	std::vector<unsigned char> PixelData(TotalBytes);
@@ -146,9 +146,9 @@ glm::vec3 KH_RendererBase::PathTracing(KH_BVHScene& Scene, KH_Ray& Ray, unsigned
 KH_HitResult KH_RendererBase::CastRayBase(KH_BVHScene& Scene, KH_Ray& Ray)
 {
 	KH_HitResult HitResult, temp;
-	for (auto& Triangle : Scene.Triangles)
+	for (auto& Primitive : Scene.BVH.Primitives)
 	{
-		temp = Triangle.Hit(Ray);
+		temp = Primitive.Hit(Ray);
 		if (temp.bIsHit && temp.Distance < HitResult.Distance)
 			HitResult = temp;
 	}
@@ -164,7 +164,7 @@ KH_HitResult KH_RendererBase::CastRayBVH(KH_BVHScene& Scene, KH_Ray& Ray)
 	{
 		for (int i = BVHHitInfo.BeginIndex; i < BVHHitInfo.EndIndex; i++)
 		{
-			temp = Scene.Triangles[i].Hit(Ray);
+			temp = Scene.BVH.Primitives[i].Hit(Ray);
 			if (temp.bIsHit && temp.Distance < HitResult.Distance)
 				HitResult = temp;
 		}

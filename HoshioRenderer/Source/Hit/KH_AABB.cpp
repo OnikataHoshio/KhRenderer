@@ -10,8 +10,6 @@ KH_AABB::KH_AABB(glm::vec3 MinPos, glm::vec3 MaxPos)
 
 }
 
-
-
 glm::vec3 KH_AABB::GetSize() const
 {
 	return MaxPos - MinPos;
