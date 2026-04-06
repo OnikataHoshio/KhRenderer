@@ -2,173 +2,143 @@
 #include "Utils/KH_DebugUtils.h"
 #include "Editor/KH_Editor.h"
 
-KH_Shader::KH_Shader(const char* vertexPath, const char* fragmentPath)
-{
-    Create(vertexPath, fragmentPath);
-}
-
-KH_Shader::KH_Shader(const char* computePath)
-{
-    Create(computePath);
-}
-
-KH_Shader::~KH_Shader()
-{
-    glDeleteProgram(ID);
-}
-
-void KH_Shader::Create(const char* vertexPath, const char* fragmentPath)
+KH_ShaderResource::~KH_ShaderResource()
 {
     if (ID != 0)
-        return;
-
-    std::string vertexCode;
-    std::string fragmentCode;
-    std::ifstream vShaderFile;
-    std::ifstream fShaderFile;
-
-    vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-
-    try {
-        vShaderFile.open(vertexPath);
-        fShaderFile.open(fragmentPath);
-        std::stringstream vShaderStream, fShaderStream;
-
-        vShaderStream << vShaderFile.rdbuf();
-        fShaderStream << fShaderFile.rdbuf();
-
-        vShaderFile.close();
-        fShaderFile.close();
-
-        vertexCode = vShaderStream.str();
-        fragmentCode = fShaderStream.str();
+    {
+        glDeleteProgram(ID);
+        ID = 0;
     }
-    catch (std::ifstream::failure& e) {
-        std::cerr << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ: " << e.what() << std::endl;
-    }
-
-    const char* vShaderCode = vertexCode.c_str();
-    const char* fShaderCode = fragmentCode.c_str();
-
-    unsigned int vertex, fragment;
-
-    vertex = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertex, 1, &vShaderCode, NULL);
-    glCompileShader(vertex);
-    CheckCompileErrors(vertex, "VERTEX");
-
-    fragment = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragment, 1, &fShaderCode, NULL);
-    glCompileShader(fragment);
-    CheckCompileErrors(fragment, "FRAGMENT");
-
-    ID = glCreateProgram();
-    glAttachShader(ID, vertex);
-    glAttachShader(ID, fragment);
-    glLinkProgram(ID);
-    CheckCompileErrors(ID, "PROGRAM");
-
-    glDeleteShader(vertex);
-    glDeleteShader(fragment);
 }
 
-void KH_Shader::Create(const char* computePath)
+KH_Shader::KH_Shader(std::shared_ptr<KH_ShaderResource> resource)
+    : Resource(std::move(resource))
 {
-    if (ID != 0)
-        return;
+}
 
-    std::string computeCode;
-    std::ifstream cShaderFile;
+bool KH_Shader::IsValid() const
+{
+    return Resource != nullptr && Resource->ID != 0;
+}
 
-    cShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+unsigned int KH_Shader::GetID() const
+{
+    return Resource ? Resource->ID : 0;
+}
 
-    try {
-        cShaderFile.open(computePath);
-        std::stringstream cShaderStream;
-        cShaderStream << cShaderFile.rdbuf();
-        cShaderFile.close();
-        computeCode = cShaderStream.str();
-    }
-    catch (std::ifstream::failure& e) {
-        std::cerr << "ERROR::COMPUTE_SHADER::FILE_NOT_SUCCESFULLY_READ: " << e.what() << std::endl;
-    }
+KH_SHADER_TYPE KH_Shader::GetType() const
+{
+    return Resource ? Resource->Type : KH_SHADER_TYPE::NONE;
+}
 
-    const char* cShaderCode = computeCode.c_str();
+const std::string& KH_Shader::GetVertexPath() const
+{
+    static std::string Empty;
+    return Resource ? Resource->VertexPath : Empty;
+}
 
-    unsigned int compute = glCreateShader(GL_COMPUTE_SHADER);
-    glShaderSource(compute, 1, &cShaderCode, NULL);
-    glCompileShader(compute);
-    CheckCompileErrors(compute, "COMPUTE");
+const std::string& KH_Shader::GetFragmentPath() const
+{
+    static std::string Empty;
+    return Resource ? Resource->FragmentPath : Empty;
+}
 
-    ID = glCreateProgram();
-    glAttachShader(ID, compute);
-    glLinkProgram(ID);
-    CheckCompileErrors(ID, "PROGRAM");
-
-    glDeleteShader(compute);
+const std::string& KH_Shader::GetComputePath() const
+{
+    static std::string Empty;
+    return Resource ? Resource->ComputePath : Empty;
 }
 
 void KH_Shader::Use() const
 {
-	glUseProgram(ID);
-}
+    if (!IsValid())
+        return;
 
+    glUseProgram(Resource->ID);
+}
 
 void KH_Shader::SetInt(const std::string& name, int value) const
 {
-    unsigned int location = glGetUniformLocation(ID, name.c_str());
+    if (!IsValid())
+        return;
+
+    GLint location = glGetUniformLocation(Resource->ID, name.c_str());
     glUniform1i(location, value);
 }
 
 void KH_Shader::SetUint(const std::string& name, uint32_t value) const
 {
-    unsigned int location = glGetUniformLocation(ID, name.c_str());
+    if (!IsValid())
+        return;
+
+    GLint location = glGetUniformLocation(Resource->ID, name.c_str());
     glUniform1ui(location, value);
 }
 
 void KH_Shader::SetFloat(const std::string& name, float value) const
 {
-    unsigned int location = glGetUniformLocation(ID, name.c_str());
+    if (!IsValid())
+        return;
+
+    GLint location = glGetUniformLocation(Resource->ID, name.c_str());
     glUniform1f(location, value);
 }
 
 void KH_Shader::SetMat4(const std::string& name, const glm::mat4& mat) const
 {
-    unsigned int location = glGetUniformLocation(ID, name.c_str());
+    if (!IsValid())
+        return;
+
+    GLint location = glGetUniformLocation(Resource->ID, name.c_str());
     glUniformMatrix4fv(location, 1, GL_FALSE, &mat[0][0]);
 }
 
 void KH_Shader::SetUvec2(const std::string& name, const glm::uvec2& value) const
 {
-    unsigned int location = glGetUniformLocation(ID, name.c_str());
+    if (!IsValid())
+        return;
+
+    GLint location = glGetUniformLocation(Resource->ID, name.c_str());
     glUniform2uiv(location, 1, &value[0]);
 }
 
 void KH_Shader::SetVec2(const std::string& name, const glm::vec2& value) const
 {
-    unsigned int location = glGetUniformLocation(ID, name.c_str());
+    if (!IsValid())
+        return;
+
+    GLint location = glGetUniformLocation(Resource->ID, name.c_str());
     glUniform2fv(location, 1, &value[0]);
 }
 
 void KH_Shader::SetVec3(const std::string& name, const glm::vec3& value) const
 {
-    unsigned int location = glGetUniformLocation(ID, name.c_str());
+    if (!IsValid())
+        return;
+
+    GLint location = glGetUniformLocation(Resource->ID, name.c_str());
     glUniform3fv(location, 1, &value[0]);
 }
 
-
 void KH_Shader::SetVec4(const std::string& name, const glm::vec4& value) const
 {
-    unsigned int location = glGetUniformLocation(ID, name.c_str());
+    if (!IsValid())
+        return;
+
+    GLint location = glGetUniformLocation(Resource->ID, name.c_str());
     glUniform4fv(location, 1, &value[0]);
 }
 
-void KH_Shader::PrintActiveUniform()
+void KH_Shader::PrintActiveUniform() const
 {
+    if (!IsValid())
+        return;
+
     GLint count = 0;
-    glGetProgramiv(ID, GL_ACTIVE_UNIFORMS, &count);
-    std::cout << "ID: " << ID << std::endl << "Active uniforms: " << count << std::endl;
+    glGetProgramiv(Resource->ID, GL_ACTIVE_UNIFORMS, &count);
+
+    std::cout << "Program ID: " << Resource->ID << std::endl;
+    std::cout << "Active uniforms: " << count << std::endl;
 
     for (GLint i = 0; i < count; ++i)
     {
@@ -176,40 +146,286 @@ void KH_Shader::PrintActiveUniform()
         GLsizei length = 0;
         GLint size = 0;
         GLenum type = 0;
-        glGetActiveUniform(ID, i, sizeof(name), &length, &size, &type, name);
-        GLint loc = glGetUniformLocation(ID, name);
+
+        glGetActiveUniform(Resource->ID, i, sizeof(name), &length, &size, &type, name);
+        GLint loc = glGetUniformLocation(Resource->ID, name);
         std::cout << i << ": " << name << ", loc = " << loc << std::endl;
     }
 }
 
-void KH_Shader::CheckCompileErrors(unsigned int shader, std::string type)
+KH_Shader KH_ShaderManager::LoadShader(const std::string& vertexPath, const std::string& fragmentPath)
 {
-    int success;
-    char infoLog[1024];
-    if (type != "PROGRAM") {
-        glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-        if (!success) {
-            glGetShaderInfoLog(shader, 1024, NULL, infoLog);
-            std::cerr << "ERROR::SHADER_COMPILATION_ERROR of type: "
-        	<< type << "\n" << infoLog
-        	<< "\n -- --------------------------------------------------- -- "
-        	<< std::endl;
+    const std::string normalizedVertexPath = NormalizePath(vertexPath);
+    const std::string normalizedFragmentPath = NormalizePath(fragmentPath);
+    const std::string key = BuildGraphicsShaderKey(normalizedVertexPath, normalizedFragmentPath);
+
+    auto it = ShaderCache.find(key);
+    if (it != ShaderCache.end())
+    {
+        if (auto shared = it->second.lock())
+        {
+            return KH_Shader(shared);
         }
     }
-    else {
-        glGetProgramiv(shader, GL_LINK_STATUS, &success);
-        if (!success) {
-            glGetProgramInfoLog(shader, 1024, NULL, infoLog);
+
+    auto resource = CreateGraphicsShaderResource(normalizedVertexPath, normalizedFragmentPath);
+    if (!resource || resource->ID == 0)
+    {
+        return KH_Shader();
+    }
+
+    ShaderCache[key] = resource;
+    return KH_Shader(resource);
+}
+
+KH_Shader KH_ShaderManager::LoadComputeShader(const std::string& computePath)
+{
+    const std::string normalizedComputePath = NormalizePath(computePath);
+    const std::string key = BuildComputeShaderKey(normalizedComputePath);
+
+    auto it = ShaderCache.find(key);
+    if (it != ShaderCache.end())
+    {
+        if (auto shared = it->second.lock())
+        {
+            return KH_Shader(shared);
+        }
+    }
+
+    auto resource = CreateComputeShaderResource(normalizedComputePath);
+    if (!resource || resource->ID == 0)
+    {
+        return KH_Shader();
+    }
+
+    ShaderCache[key] = resource;
+    return KH_Shader(resource);
+}
+
+void KH_ShaderManager::GarbageCollect()
+{
+    for (auto it = ShaderCache.begin(); it != ShaderCache.end();)
+    {
+        if (it->second.expired())
+            it = ShaderCache.erase(it);
+        else
+            ++it;
+    }
+}
+
+void KH_ShaderManager::Clear()
+{
+    ShaderCache.clear();
+}
+
+std::string KH_ShaderManager::NormalizePath(const std::string& path) const
+{
+    try
+    {
+        std::filesystem::path p(path);
+        p = std::filesystem::weakly_canonical(p);
+        return p.generic_string();
+    }
+    catch (...)
+    {
+        return std::filesystem::path(path).generic_string();
+    }
+}
+
+std::string KH_ShaderManager::BuildGraphicsShaderKey(const std::string& vertexPath, const std::string& fragmentPath) const
+{
+    return std::format("GRAPHICS|{}|{}", vertexPath, fragmentPath);
+}
+
+std::string KH_ShaderManager::BuildComputeShaderKey(const std::string& computePath) const
+{
+    return std::format("COMPUTE|{}", computePath);
+}
+
+std::shared_ptr<KH_ShaderResource> KH_ShaderManager::CreateGraphicsShaderResource(
+    const std::string& normalizedVertexPath,
+    const std::string& normalizedFragmentPath)
+{
+    std::string vertexCode;
+    std::string fragmentCode;
+
+    if (!ReadFileToString(normalizedVertexPath, vertexCode))
+    {
+        LOG_E(std::format("Failed to read vertex shader file: {}", normalizedVertexPath));
+        return nullptr;
+    }
+
+    if (!ReadFileToString(normalizedFragmentPath, fragmentCode))
+    {
+        LOG_E(std::format("Failed to read fragment shader file: {}", normalizedFragmentPath));
+        return nullptr;
+    }
+
+    unsigned int vertexShader = CompileShader(GL_VERTEX_SHADER, vertexCode.c_str(), normalizedVertexPath);
+    if (vertexShader == 0)
+        return nullptr;
+
+    unsigned int fragmentShader = CompileShader(GL_FRAGMENT_SHADER, fragmentCode.c_str(), normalizedFragmentPath);
+    if (fragmentShader == 0)
+    {
+        glDeleteShader(vertexShader);
+        return nullptr;
+    }
+
+    unsigned int program = LinkProgram({ vertexShader, fragmentShader },
+        std::format("{} + {}", normalizedVertexPath, normalizedFragmentPath));
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    if (program == 0)
+        return nullptr;
+
+    auto resource = std::make_shared<KH_ShaderResource>();
+    resource->ID = program;
+    resource->Type = KH_SHADER_TYPE::GRAPHICS;
+    resource->VertexPath = normalizedVertexPath;
+    resource->FragmentPath = normalizedFragmentPath;
+    return resource;
+}
+
+std::shared_ptr<KH_ShaderResource> KH_ShaderManager::CreateComputeShaderResource(const std::string& normalizedComputePath)
+{
+    std::string computeCode;
+    if (!ReadFileToString(normalizedComputePath, computeCode))
+    {
+        LOG_E(std::format("Failed to read compute shader file: {}", normalizedComputePath));
+        return nullptr;
+    }
+
+    unsigned int computeShader = CompileShader(GL_COMPUTE_SHADER, computeCode.c_str(), normalizedComputePath);
+    if (computeShader == 0)
+        return nullptr;
+
+    unsigned int program = LinkProgram({ computeShader }, normalizedComputePath);
+    glDeleteShader(computeShader);
+
+    if (program == 0)
+        return nullptr;
+
+    auto resource = std::make_shared<KH_ShaderResource>();
+    resource->ID = program;
+    resource->Type = KH_SHADER_TYPE::COMPUTE;
+    resource->ComputePath = normalizedComputePath;
+    return resource;
+}
+
+bool KH_ShaderManager::ReadFileToString(const std::string& filePath, std::string& outCode) const
+{
+    std::ifstream shaderFile;
+    shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+
+    try
+    {
+        shaderFile.open(filePath);
+        std::stringstream shaderStream;
+        shaderStream << shaderFile.rdbuf();
+        shaderFile.close();
+        outCode = shaderStream.str();
+        return true;
+    }
+    catch (const std::ifstream::failure& e)
+    {
+        LOG_E(std::format("ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: {} | {}", filePath, e.what()));
+        return false;
+    }
+}
+
+unsigned int KH_ShaderManager::CompileShader(GLenum shaderType, const char* code, const std::string& debugName) const
+{
+    unsigned int shader = glCreateShader(shaderType);
+    if (shader == 0)
+    {
+        LOG_E(std::format("glCreateShader failed: {}", debugName));
+        return 0;
+    }
+
+    glShaderSource(shader, 1, &code, nullptr);
+    glCompileShader(shader);
+
+    const std::string typeName =
+        shaderType == GL_VERTEX_SHADER ? "VERTEX" :
+        shaderType == GL_FRAGMENT_SHADER ? "FRAGMENT" :
+        shaderType == GL_COMPUTE_SHADER ? "COMPUTE" : "UNKNOWN";
+
+    GLint success = 0;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success)
+    {
+        CheckCompileErrors(shader, typeName, false);
+        glDeleteShader(shader);
+        return 0;
+    }
+
+    return shader;
+}
+
+unsigned int KH_ShaderManager::LinkProgram(const std::vector<unsigned int>& shaders, const std::string& debugName) const
+{
+    unsigned int program = glCreateProgram();
+    if (program == 0)
+    {
+        LOG_E(std::format("glCreateProgram failed: {}", debugName));
+        return 0;
+    }
+
+    for (unsigned int shader : shaders)
+    {
+        glAttachShader(program, shader);
+    }
+
+    glLinkProgram(program);
+
+    GLint success = 0;
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success)
+    {
+        CheckCompileErrors(program, "PROGRAM", true);
+        glDeleteProgram(program);
+        return 0;
+    }
+
+    return program;
+}
+
+void KH_ShaderManager::CheckCompileErrors(unsigned int object, const std::string& type, bool isProgram)
+{
+    int success = 0;
+    char infoLog[1024] = {};
+
+    if (!isProgram)
+    {
+        glGetShaderiv(object, GL_COMPILE_STATUS, &success);
+        if (!success)
+        {
+            glGetShaderInfoLog(object, 1024, nullptr, infoLog);
+            std::cerr << "ERROR::SHADER_COMPILATION_ERROR of type: "
+                << type << "\n" << infoLog
+                << "\n -- --------------------------------------------------- -- "
+                << std::endl;
+        }
+    }
+    else
+    {
+        glGetProgramiv(object, GL_LINK_STATUS, &success);
+        if (!success)
+        {
+            glGetProgramInfoLog(object, 1024, nullptr, infoLog);
             std::cerr << "ERROR::PROGRAM_LINKING_ERROR of type: "
-        	<< type << "\n" << infoLog
-        	<< "\n -- --------------------------------------------------- -- "
-        	<< std::endl;
+                << type << "\n" << infoLog
+                << "\n -- --------------------------------------------------- -- "
+                << std::endl;
         }
     }
 }
 
 void KH_ShaderHelper::SetupCommonMatrices(KH_Shader& Shader, const glm::mat4& model, const glm::mat4& view,
-	const glm::mat4& projection)
+    const glm::mat4& projection)
 {
     Shader.Use();
     Shader.SetMat4("model", model);
@@ -217,7 +433,7 @@ void KH_ShaderHelper::SetupCommonMatrices(KH_Shader& Shader, const glm::mat4& mo
     Shader.SetMat4("projection", projection);
 }
 
-void KH_ShaderHelper::SetupTestShader(KH_Shader& Shader,  glm::vec3 Color)
+void KH_ShaderHelper::SetupTestShader(KH_Shader& Shader, glm::vec3 Color)
 {
     Shader.Use();
     Shader.SetMat4("model", glm::mat4(1.0f));
@@ -233,18 +449,25 @@ KH_ExampleShaders::KH_ExampleShaders()
 
 void KH_ExampleShaders::InitShaders()
 {
-    TestShader.Create("Assert/Shaders/test.vert", "Assert/Shaders/test.frag");
-    AABBShader.Create("Assert/Shaders/DrawAABBs.vert", "Assert/Shaders/DrawAABBs.frag");
-    TestCanvasShader.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/DefaultCanvas.frag");
-    RayTracingShader1_0.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_0.frag");
-    RayTracingShader1_1.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_1.frag");
-    RayTracingShader1_2.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_2.frag");
-    RayTracingShader1_3.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_3.frag");
-    RayTracingShader2_0.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_0.frag");
-    RayTracingShader2_1.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_1.frag");
-    RayTracingShader2_2.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_2.frag");
-    RayTracingShader2_3.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_3.frag");
-    RayTracingShader2_4.Create("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_4.frag");
+    auto& ShaderManager = KH_ShaderManager::Instance();
+
+    TestShader = ShaderManager.LoadShader("Assert/Shaders/test.vert", "Assert/Shaders/test.frag");
+    AABBShader = ShaderManager.LoadShader("Assert/Shaders/DrawAABBs.vert", "Assert/Shaders/DrawAABBs.frag");
+    TestCanvasShader = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/DefaultCanvas.frag");
+    RayTracingShader1_0 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_0.frag");
+    RayTracingShader1_1 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_1.frag");
+    RayTracingShader1_2 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_2.frag");
+    RayTracingShader1_3 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version1/RayTracing1_3.frag");
+    RayTracingShader2_0 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_0.frag");
+    RayTracingShader2_1 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_1.frag");
+    RayTracingShader2_2 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_2.frag");
+    RayTracingShader2_3 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_3.frag");
+    RayTracingShader2_4 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_4.frag");
+    DisneyBRDF_0 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version3/DisneyBRDF_0.frag");
+
+
+    GammaCorrectionShader = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/PostProcess/GammaCorrection.frag");
+
     LOG_D(std::format("All Shaders have been loaded."));
 }
 

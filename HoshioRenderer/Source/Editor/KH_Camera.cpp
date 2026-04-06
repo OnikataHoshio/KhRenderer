@@ -57,6 +57,14 @@ KH_Ray KH_Camera::GetRay(float u, float v) const
     return Ray;
 }
 
+KH_Ray KH_Camera::GetRay(glm::vec2 ndc) const
+{
+    KH_Ray Ray;
+    Ray.Direction = GetRayDirection(ndc.x, ndc.y);
+    Ray.Start = Position;
+    return Ray;
+}
+
 void KH_Camera::UpdateAspect()
 {
     Aspect = static_cast<float>(Width) / static_cast<float>(Height);

@@ -89,9 +89,11 @@ void KH_ScanCPU::PrintArray(int level, KH_SCAN_STAGE stage)
 
 KH_ScanGPU::KH_ScanGPU()
 {
-	Scan_Pass1.Create("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass1.comp");
-	Scan_Pass2.Create("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass2.comp");
-	Scan_Pass3.Create("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass3.comp");
+	auto& ShaderManager = KH_ShaderManager::Instance();
+
+	Scan_Pass1 = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass1.comp");
+	Scan_Pass2 = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass2.comp");
+	Scan_Pass3 = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass3.comp");
 }
 
 void KH_ScanGPU::RunScanStep(glm::ivec4* dataPtr, int count)
@@ -140,11 +142,13 @@ void KH_ScanGPU::RunScanStep(glm::ivec4* dataPtr, int count)
 
 KH_RadixSort::KH_RadixSort()
 {
-	RadixSort_Pass1.Create("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Pass1.comp");
-	RadixSort_Pass2.Create("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Pass2.comp");
-	RadixSort_Scan_Pass1.Create("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass1.comp");
-	RadixSort_Scan_Pass2.Create("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass2.comp");
-	RadixSort_Scan_Pass3.Create("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass3.comp");
+	auto& ShaderManager = KH_ShaderManager::Instance();
+
+	RadixSort_Pass1 = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Pass1.comp");
+	RadixSort_Pass2 = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Pass2.comp");
+	RadixSort_Scan_Pass1 = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass1.comp");
+	RadixSort_Scan_Pass2 = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass2.comp");
+	RadixSort_Scan_Pass3 = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/RadixSortV1/RadixSort_Scan_Pass3.comp");
 }
 
 void KH_RadixSort::RunRadixSort(int* dataPtr, int count)

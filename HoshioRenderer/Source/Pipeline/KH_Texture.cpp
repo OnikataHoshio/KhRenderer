@@ -1,6 +1,7 @@
 #include "KH_Texture.h"
 
 #include "Scene/KH_Scene.h"
+#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image/stb_image.h"
 
 #include "Utils/KH_DebugUtils.h"
@@ -40,15 +41,15 @@ const std::string& KH_Texture::GetFileName() const
     return Resource ? Resource->FileName : Empty;
 }
 
-void KH_Texture::Bind(KH_Shader& Shader, const std::string& Name, uint32_t Unit) const
-{
-    if (!IsValid())
-        return;
-
-    glActiveTexture(GL_TEXTURE0 + Unit);
-    glBindTexture(GL_TEXTURE_2D, Resource->ID);
-    Shader.SetInt(Name, static_cast<int>(Unit));
-}
+//void KH_Texture::Bind(KH_Shader& Shader, const std::string& Name, uint32_t Unit) const
+//{
+//    if (!IsValid())
+//        return;
+//
+//    glActiveTexture(GL_TEXTURE0 + Unit);
+//    glBindTexture(GL_TEXTURE_2D, Resource->ID);
+//    Shader.SetInt(Name, static_cast<int>(Unit));
+//}
 
 void KH_Texture::Bind(uint32_t Unit) const
 {

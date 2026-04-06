@@ -44,7 +44,7 @@ public:
     KH_TEXTURE_TYPE GetType() const;
     const std::string& GetFileName() const;
 
-    void Bind(KH_Shader& Shader, const std::string& Name, uint32_t Unit = 0) const;
+    //void Bind(KH_Shader& Shader, const std::string& Name, uint32_t Unit = 0) const;
     void Bind(uint32_t Unit = 0) const;
     void Unbind() const;
 

@@ -20,6 +20,7 @@ struct KH_Vertex {
 };
 
 class KH_Mesh{
+    friend class KH_Model;
 public:
     KH_Mesh() = default;
     KH_Mesh(std::vector<KH_Vertex>& Vertices, std::vector<unsigned int>& Indices, std::vector<KH_Texture>& Textures, GLenum DrawMode = GL_TRIANGLES);
@@ -60,6 +61,8 @@ private:
     std::vector<KH_Vertex> Vertices;
     std::vector<unsigned int> Indices;
     std::vector<KH_Texture> Textures;
+
+    
 
     KH_AABB LocalAABB;
 

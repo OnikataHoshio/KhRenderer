@@ -68,7 +68,7 @@ float KH_AABB::ComputeSurfaceArea(glm::vec3 MinPos, glm::vec3 MaxPos)
 }
 
 
-KH_AABBHitInfo KH_AABB::Hit(KH_Ray& Ray)
+KH_AABBHitInfo KH_AABB::Hit(const KH_Ray& Ray) const
 {
 	glm::vec3 SafeDir = Ray.Direction;
 	SafeDir.x = (std::abs(SafeDir.x) < EPS) ? (SafeDir.x > 0 ? EPS : -EPS) : SafeDir.x;

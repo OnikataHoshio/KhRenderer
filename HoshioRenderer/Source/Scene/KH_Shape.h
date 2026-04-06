@@ -7,6 +7,20 @@ struct KH_HitResult;
 class KH_Ray;
 struct KH_ScenePrimitive;
 
+
+enum class KH_InspectorCommitType
+{
+	None,
+	RebuildBVH,
+	UpdateMaterial,
+	ReuploadSceneData
+};
+
+struct KH_InspectorEditResult
+{
+	bool bValueChanged = false;
+	KH_InspectorCommitType CommitType = KH_InspectorCommitType::None;
+};
 enum class KH_PrimitiveType : int
 {
 	Triangle = 0,
@@ -38,15 +52,21 @@ struct KH_PrimitiveEncoded
 };
 
 
-class KH_Object 
+class KH_Object
 {
 protected:
 	glm::vec3 Position = glm::vec3(0.0f, 0.0f, 0.0f);
 	glm::vec3 Scale = glm::vec3(1.0f, 1.0f, 1.0f);
-	glm::vec3 Rotation = glm::vec3(0.0f, 0.0f, 0.0f); // 欧拉角，单位：度
+
+	glm::vec3 Rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+
+	glm::quat RotationQuat = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+
+	glm::vec3 GizmoPivotLocal = glm::vec3(0.0f);
 
 	glm::mat4 ModelMatrix = glm::mat4(1.0f);
 	glm::mat3 NormalMatrix = glm::mat3(1.0f);
+
 public:
 	KH_Object() = default;
 	virtual ~KH_Object() = default;
@@ -57,12 +77,13 @@ public:
 	KH_Object& operator=(KH_Object&&) noexcept = default;
 
 	virtual uint32_t GetPrimitiveCount() const = 0;
-	virtual void EncodePrimitives(std::vector<KH_PrimitiveEncoded>& outPrimitives,
-		int MaterialSlotID) const = 0;
-	virtual void CollectPrimitives(std::vector<KH_ScenePrimitive>& outPrimitives,
-		int MaterialSlotID) const = 0;
+	virtual void EncodePrimitives(std::vector<KH_PrimitiveEncoded>& outPrimitives, int MaterialSlotID) const = 0;
+	virtual void CollectPrimitives(std::vector<KH_ScenePrimitive>& outPrimitives, int MaterialSlotID) const = 0;
 	virtual void CollectPrimitiveAABBCenters(std::vector<glm::vec4>& outCenters) const = 0;
+	virtual KH_HitResult Pick(const KH_Ray& Ray) const = 0;
 	virtual const KH_AABB& GetAABB() const = 0;
+
+	virtual KH_InspectorEditResult DrawInspector();
 
 public:
 	void SetPosition(const glm::vec3& InPosition);
@@ -74,6 +95,11 @@ public:
 
 	void SetRotation(const glm::vec3& InRotation);
 	void SetRotation(float Pitch, float Yaw, float Roll);
+
+	void SetRotationQuat(const glm::quat& InRotationQuat);
+
+	void SetTransform(const glm::vec3& InPosition, const glm::vec3& InRotation, const glm::vec3& InScale);
+	void SetTransform(const glm::vec3& InPosition, const glm::quat& InRotationQuat, const glm::vec3& InScale);
 
 	void Translate(const glm::vec3& Delta);
 	void Translate(float X, float Y, float Z);
@@ -87,9 +113,17 @@ public:
 	const glm::vec3& GetPosition() const;
 	const glm::vec3& GetScale() const;
 	const glm::vec3& GetRotation() const;
+	const glm::quat& GetRotationQuat() const;
 
 	glm::mat4 GetModelMatrix() const;
 	glm::mat3 GetNormalMatrix() const;
+
+	void SetGizmoPivotLocal(const glm::vec3& InPivot);
+	const glm::vec3& GetGizmoPivotLocal() const;
+
+	glm::vec3 GetGizmoPivotWorld() const;
+
+	glm::mat4 GetGizmoMatrix() const;
 
 	static glm::mat3 GetNormalMatrix(glm::mat4 Model);
 
@@ -98,6 +132,10 @@ protected:
 	glm::mat3 UpdateNormalMatrix();
 
 	virtual void OnTransformChanged();
+
+private:
+	static glm::quat EulerDegreesToQuatXYZ(const glm::vec3& degreesXYZ);
+	static glm::vec3 QuatToEulerDegreesXYZ(const glm::quat& q);
 };
 
 class KH_Hitable : public KH_Object {
@@ -106,7 +144,9 @@ protected:
 public:
 	KH_Hitable() = default;
 	virtual ~KH_Hitable() override = default;
-	virtual KH_HitResult Hit(KH_Ray& Ray) = 0;
+	virtual KH_HitResult Hit(const KH_Ray& Ray) const = 0;
+	virtual KH_HitResult Pick(const KH_Ray& Ray) const override;
+
 	virtual uint32_t GetPrimitiveCount() const override = 0;
 	virtual void EncodePrimitives(std::vector<KH_PrimitiveEncoded>& outPrimitives,
 		int MaterialSlotID) const override = 0;
@@ -118,7 +158,6 @@ public:
 protected:
 	virtual void UpdateAABB() = 0;
 	virtual void OnTransformChanged() override;
-
 };
 
 class KH_Primitive : public KH_Hitable
@@ -128,12 +167,14 @@ public:
 	glm::vec3 GetMinPos() const;
 	glm::vec3 GetMaxPos() const;
 	glm::vec3 GetAABBCenter() const;
+
 	virtual uint32_t GetPrimitiveCount() const override = 0;
 	virtual void EncodePrimitives(std::vector<KH_PrimitiveEncoded>& outPrimitives,
 		int MaterialSlotID) const override = 0;
 	virtual void CollectPrimitives(std::vector<KH_ScenePrimitive>& outPrimitives,
 		int MaterialSlotID) const override = 0;
 	virtual void CollectPrimitiveAABBCenters(std::vector<glm::vec4>& outCenters) const override = 0;
+	
 	virtual glm::vec3 GetCenterWS() const = 0;
 
 	static bool Cmpx(const KH_Primitive& p1, const KH_Primitive& p2);
@@ -195,13 +236,15 @@ public:
 	KH_Triangle(const KH_Triangle&) = default;
 	KH_Triangle& operator=(const KH_Triangle&) = default;
 
-	virtual KH_HitResult Hit(KH_Ray& Ray) override;
+	virtual KH_HitResult Hit(const KH_Ray& Ray) const override;
+
 	virtual uint32_t GetPrimitiveCount() const override;
 	virtual void EncodePrimitives(std::vector<KH_PrimitiveEncoded>& outPrimitives,
 		int MaterialSlotID) const override;
 	virtual void CollectPrimitives(std::vector<KH_ScenePrimitive>& outPrimitives,
 		int MaterialSlotID) const override;
 	virtual void CollectPrimitiveAABBCenters(std::vector<glm::vec4>& outCenters) const override;
+	
 	virtual glm::vec3 GetCenterWS() const override;
 
 private:

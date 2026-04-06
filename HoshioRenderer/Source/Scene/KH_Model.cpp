@@ -13,6 +13,7 @@ KH_Model::KH_Model(const std::string& path)
 KH_Model::KH_Model(KH_Model&& other) noexcept
     : Meshes(std::move(other.Meshes)),
     Directory(std::move(other.Directory)),
+    SourcePath(std::move(other.SourcePath)),
 	AABB(other.AABB)
 {
 }
@@ -22,6 +23,7 @@ KH_Model& KH_Model::operator=(KH_Model&& other) noexcept
     {
         Meshes = std::move(other.Meshes);
         Directory = std::move(other.Directory);
+        SourcePath = std::move(other.SourcePath);
         AABB = other.AABB;
     }
     return *this;
@@ -30,7 +32,22 @@ KH_Model& KH_Model::operator=(KH_Model&& other) noexcept
 void KH_Model::LoadModel(const std::string& path)
 {
     Assimp::Importer import;
-    const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
+
+	import.SetPropertyInteger(AI_CONFIG_PP_RVC_FLAGS, aiComponent_NORMALS);
+
+	import.SetPropertyFloat(AI_CONFIG_PP_GSN_MAX_SMOOTHING_ANGLE, 80.0f);
+
+    const unsigned int flags =
+        aiProcess_Triangulate |
+        aiProcess_FlipUVs |
+        aiProcess_JoinIdenticalVertices |
+        aiProcess_RemoveComponent |
+        aiProcess_GenSmoothNormals;
+
+    // 如果你后面确实要稳定使用切线空间，建议再打开：
+    // | aiProcess_CalcTangentSpace
+
+    const aiScene* scene = import.ReadFile(path, flags);
 
     if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode)
     {
@@ -38,9 +55,35 @@ void KH_Model::LoadModel(const std::string& path)
         return;
     }
 
+    Meshes.clear();
+    AABB.Reset();
+
     Directory = std::filesystem::path(path).parent_path().string();
     ProcessNode(scene->mRootNode, scene);
     UpdateAABB();
+    UpdateGizmoPivotLocal();
+}
+
+KH_HitResult KH_Model::Pick(const KH_Ray& Ray) const
+{
+    KH_HitResult best;
+
+    std::vector<KH_ScenePrimitive> primitives;
+    primitives.reserve(GetPrimitiveCount());
+    CollectPrimitives(primitives, KH_MATERIAL_UNDEFINED_SLOT);
+
+    for (auto& primitive : primitives)
+    {
+        KH_Ray localRay = Ray;
+        KH_HitResult hit = primitive.Hit(localRay);
+
+        if (hit.bIsHit && hit.Distance < best.Distance)
+        {
+            best = hit;
+        }
+    }
+
+    return best;
 }
 
 //void KH_Model::AddMesh(const KH_Mesh& mesh)
@@ -52,6 +95,7 @@ void KH_Model::AddMesh(KH_Mesh&& mesh)
 {
     Meshes.push_back(std::move(mesh));
     UpdateAABB();
+    UpdateGizmoPivotLocal();
 }
 
 uint32_t KH_Model::GetPrimitiveCount() const
@@ -97,6 +141,7 @@ const KH_AABB& KH_Model::GetAABB() const
 {
     return AABB;
 }
+
 
 void KH_Model::Render(KH_Shader& Shader)
 {
@@ -244,6 +289,7 @@ std::vector<KH_Texture> KH_Model::LoadMaterialTextures(aiMaterial* mat, aiTextur
 
 void KH_Model::UpdateAABB()
 {
+    AABB.Reset();
     const glm::mat4 model = GetModelMatrix();
     for (const auto& mesh : Meshes)
     {
@@ -253,13 +299,32 @@ void KH_Model::UpdateAABB()
     AABB.MaxPos = glm::vec3(model * glm::vec4(AABB.MaxPos, 1.0f));
 }
 
+void KH_Model::UpdateGizmoPivotLocal()
+{
+    glm::vec3 localMin(FLT_MAX);
+    glm::vec3 localMax(-FLT_MAX);
+
+    for (const auto& mesh : Meshes)
+    {
+	    for (const auto& v : mesh.Vertices)
+	    {
+            localMin = glm::min(localMin, v.Position);
+            localMax = glm::max(localMax, v.Position);
+	    }
+    }
+
+    glm::vec3 localCenter = (localMin + localMax) * 0.5f;
+
+    GizmoPivotLocal = localCenter;
+}
+
 void KH_Model::OnTransformChanged()
 {
 	KH_Object::OnTransformChanged();
     UpdateAABB();
 }
 
-KH_Mesh KH_PrimitiveFactory::CreatePlaneMesh(float size)
+KH_Mesh KH_PrimitiveFactory::CreateFullscreenQuadMesh(float size)
 {
     const float halfSize = size * 0.5f;
 
@@ -303,6 +368,52 @@ KH_Mesh KH_PrimitiveFactory::CreatePlaneMesh(float size)
 
     return KH_Mesh(vertices, indices, textures);
 }
+
+KH_Mesh KH_PrimitiveFactory::CreatePlaneMesh(float size)
+{
+    const float halfSize = size * 0.5f;
+
+    std::vector<KH_Vertex> vertices(4);
+
+    // 顶点 0：左下
+    vertices[0].Position = glm::vec3(-halfSize, 0.0f, -halfSize);
+    vertices[0].Normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    vertices[0].Tangent = glm::vec3(1.0f, 0.0f, 0.0f);
+    vertices[0].Bitangent = glm::vec3(0.0f, 0.0f, 1.0f);
+    vertices[0].UV = glm::vec2(0.0f, 0.0f);
+
+    // 顶点 1：右下
+    vertices[1].Position = glm::vec3(halfSize,  0.0f, -halfSize);
+    vertices[0].Normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    vertices[0].Tangent = glm::vec3(1.0f, 0.0f, 0.0f);
+    vertices[0].Bitangent = glm::vec3(0.0f, 0.0f, 1.0f);
+    vertices[0].UV = glm::vec2(0.0f, 0.0f);
+
+    // 顶点 2：右上
+    vertices[2].Position = glm::vec3(halfSize,  0.0f, halfSize);
+    vertices[0].Normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    vertices[0].Tangent = glm::vec3(1.0f, 0.0f, 0.0f);
+    vertices[0].Bitangent = glm::vec3(0.0f, 0.0f, 1.0f);
+    vertices[0].UV = glm::vec2(0.0f, 0.0f);
+
+    // 顶点 3：左上
+    vertices[3].Position = glm::vec3(-halfSize,  0.0f, halfSize);
+    vertices[0].Normal = glm::vec3(0.0f, 1.0f, 0.0f);
+    vertices[0].Tangent = glm::vec3(1.0f, 0.0f, 0.0f);
+    vertices[0].Bitangent = glm::vec3(0.0f, 0.0f, 1.0f);
+    vertices[0].UV = glm::vec2(0.0f, 0.0f);
+
+    std::vector<unsigned int> indices =
+    {
+        0, 1, 2,
+        0, 2, 3
+    };
+
+    std::vector<KH_Texture> textures;
+
+    return KH_Mesh(vertices, indices, textures);
+}
+
 
 KH_Mesh KH_PrimitiveFactory::CreateCubeMesh(float size)
 {
@@ -465,12 +576,20 @@ KH_Mesh KH_PrimitiveFactory::CreateEmptyCubeMesh(float size)
     return KH_Mesh(vertices, indices, textures, GL_LINES);
 }
 
+KH_Model KH_PrimitiveFactory::CreateFullscreenQuad(float size)
+{
+    KH_Model model;
+    model.AddMesh(CreateFullscreenQuadMesh(size));
+    return model;
+}
+
 KH_Model KH_PrimitiveFactory::CreatePlane(float size)
 {
     KH_Model model;
     model.AddMesh(CreatePlaneMesh(size));
     return model;
 }
+
 
 KH_Model KH_PrimitiveFactory::CreateCube(float size)
 {
@@ -490,6 +609,7 @@ KH_DefaultModels::KH_DefaultModels()
 {
     InitCube();
     InitEmptyCube();
+    InitFullscreenQuad();
     InitPlane();
     InitBunny();
 }
@@ -504,9 +624,14 @@ void KH_DefaultModels::InitEmptyCube()
     EmptyCube = KH_PrimitiveFactory::CreateEmptyCubeMesh(2.0);
 }
 
+void KH_DefaultModels::InitFullscreenQuad()
+{
+    FullscreenQuad = KH_PrimitiveFactory::CreateFullscreenQuadMesh(2.0);
+}
+
 void KH_DefaultModels::InitPlane()
 {
-    Plane = KH_PrimitiveFactory::CreatePlaneMesh(2.0);
+    Plane = KH_PrimitiveFactory::CreatePlane();
 }
 
 void KH_DefaultModels::InitBunny()

@@ -2,9 +2,8 @@
 #include "Scene/KH_Model.h"
 #include "Utils/KH_DebugUtils.h"
 #include "Utils/KH_Algorithms.h"
-
 #include "Scene/KH_Scene.h"
-
+#include "Editor/KH_Editor.h"
 
 void KH_LBVHNode::Hit(std::vector<KH_BVHHitInfo>& HitInfos, std::vector<KH_LBVHNode>& LBVHNodes, uint32_t PrimitiveCount, int NodeID,  KH_Ray& Ray)
 {
@@ -337,15 +336,17 @@ void KH_GpuLBVH::SetSSBOBindings()
 
 void KH_GpuLBVH::CreateShaders()
 {
-	GenerateMorton3D_Shader.Create("Assert/Shaders/ComputeShaders/LBVHBuilder/GenerateMorton3D.comp");
-	RadixSort_Pass1_Shader.Create("Assert/Shaders/ComputeShaders/LBVHBuilder/RadixSort_Pass1.comp");
-	RadixSort_Pass2_Shader.Create("Assert/Shaders/ComputeShaders/LBVHBuilder/RadixSort_Pass2.comp");
-	RadixSort_Scan_Pass1_Shader.Create("Assert/Shaders/ComputeShaders/LBVHBuilder/RadixSort_Scan_Pass1.comp");
-	RadixSort_Scan_Pass2_Shader.Create("Assert/Shaders/ComputeShaders/LBVHBuilder/RadixSort_Scan_Pass2.comp");
-	RadixSort_Scan_Pass3_Shader.Create("Assert/Shaders/ComputeShaders/LBVHBuilder/RadixSort_Scan_Pass3.comp");
+	auto& ShaderManager = KH_ShaderManager::Instance();
 
-	PrecomputeDelta_Shader.Create("Assert/Shaders/ComputeShaders/LBVHBuilder/PrecomputeDelta.comp");
-	BuildLBVH_Shader.Create("Assert/Shaders/ComputeShaders/LBVHBuilder/BuildLBVH.comp");
+	GenerateMorton3D_Shader = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/LBVHBuilder/GenerateMorton3D.comp");
+	RadixSort_Pass1_Shader = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/LBVHBuilder/RadixSort_Pass1.comp");
+	RadixSort_Pass2_Shader = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/LBVHBuilder/RadixSort_Pass2.comp");
+	RadixSort_Scan_Pass1_Shader = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/LBVHBuilder/RadixSort_Scan_Pass1.comp");
+	RadixSort_Scan_Pass2_Shader = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/LBVHBuilder/RadixSort_Scan_Pass2.comp");
+	RadixSort_Scan_Pass3_Shader = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/LBVHBuilder/RadixSort_Scan_Pass3.comp");
+
+	PrecomputeDelta_Shader = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/LBVHBuilder/PrecomputeDelta.comp");
+	BuildLBVH_Shader = ShaderManager.LoadComputeShader("Assert/Shaders/ComputeShaders/LBVHBuilder/BuildLBVH.comp");
 }
 
 void KH_GpuLBVH::FillModelMatrices()
@@ -466,7 +467,7 @@ KH_GpuLBVH::KH_GpuLBVH()
 	CreateShaders();
 }
 
-void KH_GpuLBVH::BindAndBuild(KH_Scene<KH_GpuLBVH>* Scene)
+void KH_GpuLBVH::BindAndBuild(KH_GpuLBVHScene* Scene)
 {
 	this->pScene = Scene;
 	Initialize();

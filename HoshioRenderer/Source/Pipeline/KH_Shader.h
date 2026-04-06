@@ -2,17 +2,45 @@
 
 #include "KH_Common.h"
 
-class KH_Shader {
-public:
+enum class KH_SHADER_TYPE
+{
+    NONE = 0,
+    GRAPHICS,
+    COMPUTE
+};
+
+struct KH_ShaderResource
+{
     unsigned int ID = 0;
+    KH_SHADER_TYPE Type = KH_SHADER_TYPE::NONE;
 
+    std::string VertexPath;
+    std::string FragmentPath;
+    std::string ComputePath;
+
+    ~KH_ShaderResource();
+};
+
+class KH_Shader
+{
+public:
     KH_Shader() = default;
-    KH_Shader(const char* vertexPath, const char* fragmentPath);
-    KH_Shader(const char* computePath);
-    ~KH_Shader();
+    explicit KH_Shader(std::shared_ptr<KH_ShaderResource> resource);
 
-    void Create(const char* vertexPath, const char* fragmentPath);
-    void Create(const char* computePath);
+    KH_Shader(const KH_Shader&) = default;
+    KH_Shader& operator=(const KH_Shader&) = default;
+    KH_Shader(KH_Shader&&) noexcept = default;
+    KH_Shader& operator=(KH_Shader&&) noexcept = default;
+    ~KH_Shader() = default;
+
+    bool IsValid() const;
+    unsigned int GetID() const;
+    KH_SHADER_TYPE GetType() const;
+
+    const std::string& GetVertexPath() const;
+    const std::string& GetFragmentPath() const;
+    const std::string& GetComputePath() const;
+
     void Use() const;
 
     void SetInt(const std::string& name, int value) const;
@@ -24,10 +52,49 @@ public:
     void SetVec3(const std::string& name, const glm::vec3& value) const;
     void SetVec4(const std::string& name, const glm::vec4& value) const;
 
-    void PrintActiveUniform();
+    void PrintActiveUniform() const;
 
 private:
-    static void CheckCompileErrors(unsigned int shader, std::string type);
+    std::shared_ptr<KH_ShaderResource> Resource;
+};
+
+class KH_ShaderManager : public KH_Singleton<KH_ShaderManager>
+{
+    friend class KH_Singleton<KH_ShaderManager>;
+
+public:
+    KH_Shader LoadShader(const std::string& vertexPath, const std::string& fragmentPath);
+    KH_Shader LoadComputeShader(const std::string& computePath);
+
+    void GarbageCollect();
+    void Clear();
+
+private:
+    KH_ShaderManager() = default;
+    ~KH_ShaderManager() override = default;
+
+    KH_ShaderManager(const KH_ShaderManager&) = delete;
+    KH_ShaderManager& operator=(const KH_ShaderManager&) = delete;
+
+private:
+    std::unordered_map<std::string, std::weak_ptr<KH_ShaderResource>> ShaderCache;
+
+private:
+    std::string NormalizePath(const std::string& path) const;
+    std::string BuildGraphicsShaderKey(const std::string& vertexPath, const std::string& fragmentPath) const;
+    std::string BuildComputeShaderKey(const std::string& computePath) const;
+
+    std::shared_ptr<KH_ShaderResource> CreateGraphicsShaderResource(const std::string& normalizedVertexPath,
+        const std::string& normalizedFragmentPath);
+
+    std::shared_ptr<KH_ShaderResource> CreateComputeShaderResource(const std::string& normalizedComputePath);
+
+    bool ReadFileToString(const std::string& filePath, std::string& outCode) const;
+
+    unsigned int CompileShader(GLenum shaderType, const char* code, const std::string& debugName) const;
+    unsigned int LinkProgram(const std::vector<unsigned int>& shaders, const std::string& debugName) const;
+
+    static void CheckCompileErrors(unsigned int object, const std::string& type, bool isProgram);
 };
 
 class KH_ShaderHelper
@@ -41,18 +108,17 @@ public:
     static void SetupTestShader(KH_Shader& Shader, glm::vec3 Color);
 };
 
-
-
 class KH_ExampleShaders : public KH_Singleton<KH_ExampleShaders>
 {
     friend class KH_Singleton<KH_ExampleShaders>;
+
 private:
     KH_ExampleShaders();
     virtual ~KH_ExampleShaders() override = default;
 
     void InitShaders();
-
     void PrintShaderLoadMessage(std::string ShaderName);
+
 public:
     KH_Shader TestShader;
     KH_Shader AABBShader;
@@ -66,4 +132,7 @@ public:
     KH_Shader RayTracingShader2_2;
     KH_Shader RayTracingShader2_3;
     KH_Shader RayTracingShader2_4;
+    KH_Shader DisneyBRDF_0;
+
+    KH_Shader GammaCorrectionShader;
 };

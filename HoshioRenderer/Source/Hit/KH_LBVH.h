@@ -83,19 +83,14 @@ private:
 	std::vector<int> AtomicTags;
 };
 
-
-template<typename BVHType> class KH_Scene;
-
-template<> class KH_Scene<KH_GpuLBVH>;
-
 class KH_GpuLBVH
 {
-	friend class KH_Scene<KH_GpuLBVH>;
+	friend class KH_GpuLBVHScene;
 
 public:
 	KH_GpuLBVH();
 
-	void BindAndBuild(KH_Scene<KH_GpuLBVH>* Scene);
+	void BindAndBuild(KH_GpuLBVHScene* Scene);
 
 	void Initialize();
 
@@ -129,7 +124,7 @@ private:
 	int RadixSort_NumBlocks = 0;
 	int Scan_NumBlocks = 0;
 
-	KH_Scene<KH_GpuLBVH>* pScene = nullptr;
+	KH_GpuLBVHScene* pScene = nullptr;
 	KH_AABB AABB;
 
 	std::vector<glm::mat4> ModelMats;

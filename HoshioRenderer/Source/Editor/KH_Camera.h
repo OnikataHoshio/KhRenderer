@@ -18,10 +18,10 @@ class KH_Camera
 public:
     KH_Camera(
         uint32_t width = 1920, uint32_t height = 1080,
-        glm::vec3 position = { 0.0f, 0.0f, 3.0f },
+        glm::vec3 position = { 2.0f, 2.0f, 2.0f },
         glm::vec3 up = { 0.0f, 1.0f, 0.0f },
-        float yaw = -90.0f,
-        float pitch = 0.0f
+        float yaw = -140.0f,
+        float pitch = -35.0f
     );
 
     glm::mat4 GetViewMatrix() const;
@@ -34,6 +34,8 @@ public:
     KH_Ray GetRay(int i, int j) const;
 
     KH_Ray GetRay(float u, float v) const;
+
+    KH_Ray GetRay(glm::vec2 ndc) const;
 
     void UpdateAspect();
 

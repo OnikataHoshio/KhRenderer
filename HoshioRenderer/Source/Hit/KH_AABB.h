@@ -17,7 +17,7 @@ class KH_AABB
 public:
 	KH_AABB(glm::vec3 MinPos = glm::vec3(std::numeric_limits<float>::max()), glm::vec3 MaxPos = glm::vec3(-std::numeric_limits<float>::max()));
 
-	KH_AABBHitInfo Hit(KH_Ray& Ray);
+	KH_AABBHitInfo Hit(const KH_Ray& Ray) const;
 
 	bool CheckOverlap(KH_AABB& Other);
 

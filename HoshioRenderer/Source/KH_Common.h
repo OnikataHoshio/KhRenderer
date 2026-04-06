@@ -31,12 +31,16 @@
 #include "imgui/imgui_impl_glfw.h"
 #include "imgui/imgui_impl_opengl3.h"
 
+#include "imgui/ImGuizmo.h"
+
 // ================= 数学库 =================
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-
+#include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
+
+#include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/component_wise.hpp>
 #include "Eigen/StdList"
 #include "Eigen/StdVector"
@@ -44,10 +48,11 @@
 
 // ================= 辅助库 ==================
 #include "magic_enum/magic_enum.hpp"
-
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+
+#include <tinyxml2/tinyxml2.h>
 
 // ================= Macro ==================
 #define EPS 1e-6

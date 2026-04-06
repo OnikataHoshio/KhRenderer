@@ -1,83 +1,8 @@
 #include "KH_Panel.h"
 #include "KH_Editor.h"
+#include "Scene/KH_Scene.h"
 #include "Utils/KH_DebugUtils.h"
 
-KH_Canvas::KH_Canvas()
-    :Timer(3.0f)
-{
-    Framebuffers[0].Create(64, 64);
-    Framebuffers[1].Create(64, 64);
-}
-
-void KH_Canvas::Render()
-{
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-
-    ImGui::Begin("Canvas");
-    {
-        ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
-        uint32_t viewportWidth = static_cast<uint32_t>(viewportPanelSize.x);
-        uint32_t viewportHeight = static_cast<uint32_t>(viewportPanelSize.y);
-
-        KH_Framebuffer& Framebuffer = GetCurrentFramebuffer();
-
-        if (viewportWidth != Framebuffer.GetWidth() || viewportHeight != Framebuffer.GetHeight())
-        {
-            if (viewportPanelSize.x > 0 && viewportPanelSize.y > 0) {
-                Framebuffer.Rescale(viewportWidth, viewportHeight);
-                KH_Editor::Instance().UpdateCanvasExtent(viewportWidth, viewportHeight);
-                glViewport(0, 0, KH_Editor::GetCanvasWidth(), KH_Editor::GetCanvasHeight());
-
-                Timer.Reset();
-            }
-        }
-
-        Timer.Tick(ImGui::GetIO().DeltaTime);
-
-        if (Timer.HasFinished())
-        {
-            std::string DebugMessage = std::format("Canvas size has been changed to [{},{}]", viewportWidth, viewportHeight);
-            LOG_D(DebugMessage);
-            Timer.InActive();
-        }
-
-        uint32_t textureID = Framebuffer.GetTextureID();
-        ImGui::Image((void*)(intptr_t)textureID, viewportPanelSize, ImVec2(0, 1), ImVec2(1, 0));
-
-        bIsFocused = ImGui::IsWindowFocused();
-        bIsHovered = ImGui::IsWindowHovered();
-    }
-    ImGui::End();
-
-    ImGui::PopStyleVar();
-
-    SwapFramebuffer();
-}
-
-KH_Framebuffer& KH_Canvas::GetCurrentFramebuffer()
-{
-    return Framebuffers[FrameBufferHandle];
-}
-
-KH_Framebuffer& KH_Canvas::GetLastFramebuffer()
-{
-    return Framebuffers[(FrameBufferHandle + 1) % 2];
-}
-
-void KH_Canvas::BindFramebuffer()
-{
-    GetCurrentFramebuffer().Bind();
-}
-
-void KH_Canvas::UnbindFramebuffer()
-{
-    GetCurrentFramebuffer().Unbind();
-}
-
-void KH_Canvas::SwapFramebuffer()
-{
-    FrameBufferHandle = (FrameBufferHandle + 1) % 2; 
-}
 
 
 std::vector<KH_LOG_MESSAGE> KH_Console::LogMessages;
@@ -138,14 +63,45 @@ void KH_Console::Render()
     ImGui::PopStyleVar();
 }
 
-void KH_Setting::Render()
+void KH_Insepctor::Render()
 {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    ImGui::Begin("Setting");
+    ImGui::Begin("Inspector");
+
+    KH_Editor& Editor = KH_Editor::Instance();
+
+    if (!Editor.Scene)
+    {
+        ImGui::TextDisabled("No scene");
+    }
+    else
+    {
+        int32_t selected = Editor.GetSelectedObjectIndex();
+        auto& objects = Editor.Scene->GetObjects();
+
+        if (selected < 0 || selected >= static_cast<int32_t>(objects.size()))
+        {
+            ImGui::Indent(20.0f);
+            ImGui::TextDisabled("No selection");
+            ImGui::Unindent(20.0f);
+        }
+        else
+        {
+            KH_Object* Object = objects[selected].Object.get();
+            if (Object)
+            {
+                KH_InspectorEditResult EditResult = Object->DrawInspector();
+                if (EditResult.CommitType == KH_InspectorCommitType::RebuildBVH)
+                {
+                    Editor.RequestSceneRebuild();
+                }
+            }
+        }
+    }
 
     bIsFocused = ImGui::IsWindowFocused();
     bIsHovered = ImGui::IsWindowHovered();
-
+     
     ImGui::End();
     ImGui::PopStyleVar();
 
@@ -190,13 +146,14 @@ void KH_GlobalInfo::Render()
 
         if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Indent(20.0f);
+            ImGui::Text("Yaw  : %.2f", KH_Editor::Instance().Camera.Yaw);
+            ImGui::Text("Pitch: %.2f", KH_Editor::Instance().Camera.Pitch);
             ImGui::Text("Speed: %.2f", KH_Editor::Instance().Camera.MovementSpeed);
             ImGui::Text("Fovy : %.2f", KH_Editor::Instance().Camera.Fovy);
             ImGui::Unindent(20.0f);
         }
 
         ImGui::Separator();
-
     }
 
     bIsFocused = ImGui::IsWindowFocused();

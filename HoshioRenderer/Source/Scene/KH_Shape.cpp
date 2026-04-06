@@ -2,14 +2,61 @@
 #include "Hit/KH_Ray.h"
 #include "Utils/KH_DebugUtils.h"
 
-void KH_Hitable::CollectPrimitiveAABBCenters(std::vector<glm::vec4>& outCenters) const
+
+
+glm::quat KH_Object::EulerDegreesToQuatXYZ(const glm::vec3& degreesXYZ)
 {
-    outCenters.push_back(glm::vec4(AABB.GetCenter(), 1.0f));
+    const glm::vec3 r = glm::radians(degreesXYZ);
+
+    const glm::quat qx = glm::angleAxis(r.x, glm::vec3(1.0f, 0.0f, 0.0f));
+    const glm::quat qy = glm::angleAxis(r.y, glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::quat qz = glm::angleAxis(r.z, glm::vec3(0.0f, 0.0f, 1.0f));
+
+    // 对齐你原来的 X -> Y -> Z 旋转顺序
+    return glm::normalize(qx * qy * qz);
 }
 
-const KH_AABB& KH_Hitable::GetAABB() const
+glm::vec3 KH_Object::QuatToEulerDegreesXYZ(const glm::quat& q)
 {
-    return AABB;
+    return glm::degrees(glm::eulerAngles(glm::normalize(q)));
+}
+
+KH_InspectorEditResult KH_Object::DrawInspector()
+{
+    KH_InspectorEditResult result;
+
+    ImGui::SeparatorText("Transform");
+    ImGui::Indent(20.0f);
+
+    glm::vec3 position = GetPosition();
+    glm::vec3 rotation = GetRotation();
+    glm::vec3 scale = GetScale();
+
+    if (ImGui::DragFloat3("Position", &position.x, 0.01f))
+    {
+        SetPosition(position);
+        result.bValueChanged = true;
+        result.CommitType = KH_InspectorCommitType::RebuildBVH;
+    }
+
+    if (ImGui::DragFloat3("Rotation", &rotation.x, 0.5f))
+    {
+        SetRotation(rotation);
+        result.bValueChanged = true;
+        result.CommitType = KH_InspectorCommitType::RebuildBVH;
+    }
+
+    if (ImGui::DragFloat3("Scale", &scale.x, 0.01f, 0.001f, 1000.0f))
+    {
+        SetScale(scale);
+        result.bValueChanged = true;
+        result.CommitType = KH_InspectorCommitType::RebuildBVH;
+    }
+
+    ImGui::Spacing();
+    ImGui::Unindent(20.0f);
+
+    return result;
 }
 
 void KH_Object::SetPosition(const glm::vec3& InPosition)
@@ -45,12 +92,39 @@ void KH_Object::SetUniformScale(float S)
 void KH_Object::SetRotation(const glm::vec3& InRotation)
 {
     Rotation = InRotation;
+    RotationQuat = EulerDegreesToQuatXYZ(Rotation);
     OnTransformChanged();
 }
 
 void KH_Object::SetRotation(float Pitch, float Yaw, float Roll)
 {
     Rotation = glm::vec3(Pitch, Yaw, Roll);
+    RotationQuat = EulerDegreesToQuatXYZ(Rotation);
+    OnTransformChanged();
+}
+
+void KH_Object::SetRotationQuat(const glm::quat& InRotationQuat)
+{
+    RotationQuat = glm::normalize(InRotationQuat);
+    Rotation = QuatToEulerDegreesXYZ(RotationQuat); // 仅同步 UI 显示
+    OnTransformChanged();
+}
+
+void KH_Object::SetTransform(const glm::vec3& InPosition, const glm::vec3& InRotation, const glm::vec3& InScale)
+{
+    Position = InPosition;
+    Scale = InScale;
+    Rotation = InRotation;
+    RotationQuat = EulerDegreesToQuatXYZ(Rotation);
+    OnTransformChanged();
+}
+
+void KH_Object::SetTransform(const glm::vec3& InPosition, const glm::quat& InRotationQuat, const glm::vec3& InScale)
+{
+    Position = InPosition;
+    Scale = InScale;
+    RotationQuat = glm::normalize(InRotationQuat);
+    Rotation = QuatToEulerDegreesXYZ(RotationQuat); // 仅同步 UI 显示
     OnTransformChanged();
 }
 
@@ -69,12 +143,14 @@ void KH_Object::Translate(float X, float Y, float Z)
 void KH_Object::Rotate(const glm::vec3& DeltaRotation)
 {
     Rotation += DeltaRotation;
+    RotationQuat = EulerDegreesToQuatXYZ(Rotation);
     OnTransformChanged();
 }
 
 void KH_Object::Rotate(float Pitch, float Yaw, float Roll)
 {
     Rotation += glm::vec3(Pitch, Yaw, Roll);
+    RotationQuat = EulerDegreesToQuatXYZ(Rotation);
     OnTransformChanged();
 }
 
@@ -105,6 +181,11 @@ const glm::vec3& KH_Object::GetRotation() const
     return Rotation;
 }
 
+const glm::quat& KH_Object::GetRotationQuat() const
+{
+    return RotationQuat;
+}
+
 glm::mat4 KH_Object::GetModelMatrix() const
 {
     return ModelMatrix;
@@ -115,6 +196,26 @@ glm::mat3 KH_Object::GetNormalMatrix() const
     return NormalMatrix;
 }
 
+void KH_Object::SetGizmoPivotLocal(const glm::vec3& InPivot)
+{
+    GizmoPivotLocal = InPivot;
+}
+
+const glm::vec3& KH_Object::GetGizmoPivotLocal() const
+{
+    return GizmoPivotLocal;
+}
+
+glm::vec3 KH_Object::GetGizmoPivotWorld() const
+{
+    return glm::vec3(ModelMatrix * glm::vec4(GizmoPivotLocal, 1.0f));
+}
+
+glm::mat4 KH_Object::GetGizmoMatrix() const
+{
+    return ModelMatrix * glm::translate(glm::mat4(1.0f), GizmoPivotLocal);
+}
+
 glm::mat3 KH_Object::GetNormalMatrix(glm::mat4 Model)
 {
     return glm::transpose(glm::inverse(glm::mat3(Model)));
@@ -122,22 +223,17 @@ glm::mat3 KH_Object::GetNormalMatrix(glm::mat4 Model)
 
 glm::mat4 KH_Object::UpdateModelMatrix()
 {
-    ModelMatrix =  glm::mat4(1.0f);
+    const glm::mat4 T = glm::translate(glm::mat4(1.0f), Position);
+    const glm::mat4 R = glm::toMat4(glm::normalize(RotationQuat));
+    const glm::mat4 S = glm::scale(glm::mat4(1.0f), Scale);
 
-    ModelMatrix = glm::translate(ModelMatrix, Position);
-
-    ModelMatrix = glm::rotate(ModelMatrix, glm::radians(Rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-    ModelMatrix = glm::rotate(ModelMatrix, glm::radians(Rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-    ModelMatrix = glm::rotate(ModelMatrix, glm::radians(Rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
-
-    ModelMatrix = glm::scale(ModelMatrix, Scale);
-
+    ModelMatrix = T * R * S;
     return ModelMatrix;
 }
 
 glm::mat3 KH_Object::UpdateNormalMatrix()
 {
-    NormalMatrix =  GetNormalMatrix(ModelMatrix);
+    NormalMatrix = GetNormalMatrix(ModelMatrix);
     return NormalMatrix;
 }
 
@@ -146,6 +242,22 @@ void KH_Object::OnTransformChanged()
     UpdateModelMatrix();
     UpdateNormalMatrix();
 }
+
+KH_HitResult KH_Hitable::Pick(const KH_Ray& Ray) const
+{
+    return Hit(Ray);
+}
+
+void KH_Hitable::CollectPrimitiveAABBCenters(std::vector<glm::vec4>& outCenters) const
+{
+    outCenters.push_back(glm::vec4(AABB.GetCenter(), 1.0f));
+}
+
+const KH_AABB& KH_Hitable::GetAABB() const
+{
+    return AABB;
+}
+
 
 void KH_Hitable::OnTransformChanged()
 {
@@ -225,6 +337,8 @@ KH_Triangle::KH_Triangle()
     P1 = P2 = P3 = glm::vec3(0.0f, 0.0f, 0.0f);
     N1 = N2 = N3 = glm::vec3(0.0f, -1.0f, 0.0f);
 
+    GizmoPivotLocal = (P1 + P2 + P3) * 0.33333333f;
+
     UpdateModelMatrix();
     UpdateNormalMatrix();
     UpdateAABB();
@@ -240,6 +354,8 @@ KH_Triangle::KH_Triangle(glm::vec3 P1, glm::vec3 P2, glm::vec3 P3)
     const glm::vec3 P1P3 = P3 - P1;
     N1 = N2 = N3 = glm::normalize(glm::cross(P1P2, P1P3));
 
+    GizmoPivotLocal = (P1 + P2 + P3) * 0.33333333f;
+
     UpdateModelMatrix();
     UpdateNormalMatrix();
     UpdateAABB();
@@ -251,6 +367,8 @@ KH_Triangle::KH_Triangle(glm::vec3 P1, glm::vec3 P2, glm::vec3 P3, glm::vec3 N1,
 {
     PrimitiveType = KH_PrimitiveType::Triangle;
 
+    GizmoPivotLocal = (P1 + P2 + P3) * 0.33333333f;
+
     UpdateModelMatrix();
     UpdateNormalMatrix();
     UpdateAABB();
@@ -258,7 +376,7 @@ KH_Triangle::KH_Triangle(glm::vec3 P1, glm::vec3 P2, glm::vec3 P3, glm::vec3 N1,
 }
 
 
-KH_HitResult KH_Triangle::Hit(KH_Ray& Ray)
+KH_HitResult KH_Triangle::Hit(const KH_Ray& Ray) const
 {
     // MT算法
     KH_TriangleWorldData Data = GetWorldData();
