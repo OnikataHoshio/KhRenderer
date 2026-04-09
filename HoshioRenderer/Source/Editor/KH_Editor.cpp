@@ -201,6 +201,8 @@ void KH_Editor::EndRender()
     Inspector.Render();
     MaterialsEditor.Render();
     GlobalInfo.Render();
+    ShaderFeatures.Render();
+
     Canvas.SwapFramebuffer();
     EndImgui();
     Window.EndRender();

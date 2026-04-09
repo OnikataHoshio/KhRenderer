@@ -72,6 +72,16 @@ const std::vector<KH_SceneObject>& KH_SceneBase::GetObjects() const
     return Objects;
 }
 
+KH_DisneyBRDF& KH_SceneBase::GetShaderFeature()
+{
+    return ShaderFeature; 
+}
+
+const KH_DisneyBRDF& KH_SceneBase::GetShaderFeature() const
+{
+    return ShaderFeature; 
+}
+
 KH_Model& KH_SceneBase::AddModel(int MaterialSlotID, const std::string& Path)
 {
     auto obj = std::make_unique<KH_Model>(Path);
@@ -232,6 +242,8 @@ void KH_GpuLBVHScene::SetRayTracingParam(KH_Shader& Shader)
     Shader.SetInt("uLastFrame", 0);
     Shader.SetInt("uSkybox", 1);
 
+    ShaderFeature.ApplyUniforms();
+
     SetAndBindCameraParamUB0();
 }
 
@@ -265,7 +277,7 @@ void KH_GpuLBVHScene::UpdatePrimitiveSSBO()
 
 void KH_GpuLBVHScene::Render()
 {
-    SetRayTracingParam(KH_ExampleShaders::Instance().DisneyBRDF_0);
+    SetRayTracingParam(ShaderFeature.GetShader());
 
     KH_Editor::Instance().BindCanvasFramebuffer();
 

@@ -118,9 +118,9 @@ private:
     KH_GlobalInfo GlobalInfo;
     KH_SceneTree SceneTree;
     KH_MaterialEditor MaterialsEditor;
+    KH_ShaderFeatures ShaderFeatures;
 
     std::string CurrentSceneXmlPath;
-
 
     KH_Editor();
     ~KH_Editor();

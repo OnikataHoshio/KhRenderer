@@ -4,6 +4,8 @@
 #include "Hit/KH_LBVH.h"
 #include "Utils/KH_DebugUtils.h"
 
+#include "Pipeline/ShaderFeature/KH_DisneyBRDF.h"
+
 enum class KH_BVH_BUILD_MODE;
 
 struct KH_BRDFMaterialEncoded
@@ -31,8 +33,6 @@ struct KH_CameraParam {
     glm::vec4 Front;
 };
 
-
-
 class KH_SceneBase {
     friend class KH_GpuLBVH;
 protected:
@@ -49,6 +49,8 @@ protected:
     std::vector<KH_PrimitiveEncoded> EncodePrimitives();
     std::vector<KH_BRDFMaterialEncoded> EncodeBRDFMaterials() const;
 
+    KH_DisneyBRDF ShaderFeature;
+
 public:
     std::vector<KH_BRDFMaterial> Materials;
 
@@ -59,10 +61,14 @@ public:
 
     std::vector<KH_SceneObject>& GetObjects();
     const std::vector<KH_SceneObject>& GetObjects() const;
+    KH_DisneyBRDF& GetShaderFeature();
+    const KH_DisneyBRDF& GetShaderFeature() const;
+
 
 	KH_Model& AddModel(int MaterialSlotID, const std::string& Path);
     KH_Model& AddModel(int MaterialSlotID, KH_Model&& Model);
     KH_Model& AddEmptyModel(int MaterialSlotID);
+
 
     int AddMaterial(const KH_BRDFMaterial& material = KH_BRDFMaterial{});
     bool DeleteMaterial(int materialID);
@@ -79,8 +85,6 @@ public:
     virtual void BindAndBuild() = 0;
 };
 
-
-
 class KH_GpuLBVHScene : public KH_SceneBase
 {
     friend class KH_GpuLBVH;
@@ -93,12 +97,13 @@ public:
     KH_GpuLBVH BVH;
 
     KH_GpuLBVHScene() {
+        ShaderFeature.SetShader(KH_ExampleShaders::Instance().DisneyBRDF_2);
         Primitive_SSBO.SetBindPoint(0);
         Material_SSBO.SetBindPoint(4);
         CameraParam_UB0.SetBindPoint(5);
     }
 
-    ~KH_GpuLBVHScene() = default;
+    ~KH_GpuLBVHScene() override = default;
 
     void BindAndBuild() override;
     void UpdateMaterialSSBO();

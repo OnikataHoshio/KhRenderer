@@ -48,8 +48,3 @@ void KH_PostProcessHelper::InitSingleGammaCorrectionGraph()
 
     SingleGammaCorrectionGraph.AddPass(std::move(GammaCorrection));
 }
-
-void KH_PostProcessHelper::InitDrawSobelGraph()
-{
-
-}

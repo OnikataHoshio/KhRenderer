@@ -133,6 +133,9 @@ public:
     KH_Shader RayTracingShader2_3;
     KH_Shader RayTracingShader2_4;
     KH_Shader DisneyBRDF_0;
+    KH_Shader DisneyBRDF_1;
+    KH_Shader DisneyBRDF_2;
 
     KH_Shader GammaCorrectionShader;
+    KH_Shader DrawSobolShader;
 };

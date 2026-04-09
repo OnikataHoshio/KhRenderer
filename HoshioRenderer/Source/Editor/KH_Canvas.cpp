@@ -11,7 +11,7 @@ KH_Canvas::KH_Canvas()
     sceneDesc.Width = 64;
     sceneDesc.Height = 64;
     sceneDesc.Attachments = {
-        KH_FramebufferTextureFormat::RGBA16F,      // Scene Color
+        KH_FramebufferTextureFormat::RGBA32F,      // Scene Color
         KH_FramebufferTextureFormat::DEPTH32F      // Depth
     };
 

@@ -57,3 +57,13 @@ public:
 	void Render() override;
 };
 
+
+class KH_ShaderFeatures : public KH_Panel
+{
+public:
+	KH_ShaderFeatures() = default;
+	~KH_ShaderFeatures() override = default;
+
+	void Render() override;
+};
+

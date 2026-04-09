@@ -256,4 +256,21 @@ void KH_SceneTree::Render()
     ImGui::PopStyleVar();
 }
 
+void KH_ShaderFeatures::Render()
+{
+    KH_Editor& Editor = KH_Editor::Instance();
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::Begin("ShaderSetting");
+
+    
+    Editor.Scene.GetShaderFeature().DrawControlPanel();
+
+    bIsFocused = ImGui::IsWindowFocused();
+    bIsHovered = ImGui::IsWindowHovered();
+
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
 

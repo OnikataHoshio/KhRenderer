@@ -464,9 +464,11 @@ void KH_ExampleShaders::InitShaders()
     RayTracingShader2_3 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_3.frag");
     RayTracingShader2_4 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version2/RayTracing2_4.frag");
     DisneyBRDF_0 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version3/DisneyBRDF_0.frag");
-
+    DisneyBRDF_1 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version3/DisneyBRDF_1.frag");
+    DisneyBRDF_2 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version3/DisneyBRDF_2.frag");
 
     GammaCorrectionShader = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/PostProcess/GammaCorrection.frag");
+    DrawSobolShader = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/ScenePass/DrawSobol.frag");
 
     LOG_D(std::format("All Shaders have been loaded."));
 }
