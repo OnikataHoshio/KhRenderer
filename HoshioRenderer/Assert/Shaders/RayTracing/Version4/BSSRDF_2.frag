@@ -10,27 +10,13 @@ struct Primitive{
     ivec2 MaterialSlot;
 };
 
-struct EncodedBRDFMaterial{
-	vec4 Emissive;  
-	vec4 BaseColor;
-    vec4 Param1;
-    vec4 Param2;
-    vec4 Param3;
-};
 
-struct BRDFMaterial{
-	vec3 Emissive; 
-	vec3 BaseColor;
-	float Subsurface;
-	float Metallic;
-	float Specular;
-	float SpecularTint;
-	float Roughness;
-	float Anisotropic;
-	float Sheen;
-	float SheenTint;
-	float Clearcoat;
-	float ClearcoatGloss;
+struct BSSRDFMaterial{
+    vec4 Emissive;
+    vec4 BaseColor;
+    vec4 Radius;
+    vec2 Eta;
+    vec2 Scale;
 };
 
 struct LBVHNode{
@@ -44,7 +30,7 @@ layout(std430, binding = 0) buffer PrimitiveSSBO { Primitive Primitives[]; };
 layout(std430, binding = 1) buffer Morton3DBuffer { uvec2 SortedMorton3D[]; };
 layout(std430, binding = 2) buffer LBVHNodeBuffer { LBVHNode LBVHNodes[]; };
 layout(std430, binding = 3) buffer AuxiliaryBuffer { ivec4 Root; };
-layout(std430, binding = 4) buffer EncodedBRDFMaterialSSBO{ EncodedBRDFMaterial Materials[]; };
+layout(std430, binding = 4) buffer BSSRDFMaterialSSBO{ BSSRDFMaterial Materials[]; };
 
 layout(std140, binding = 5) uniform CameraBlock {
     vec4 AspectAndFovy; // x: Aspect, y: Fovy
@@ -54,6 +40,8 @@ layout(std140, binding = 5) uniform CameraBlock {
     vec4 Front;
 } UCameraParam;
 
+layout(std430, binding = 6) buffer InvertCDFSSBO {float InvertCDF[]; };
+
 uniform sampler2D uLastFrame;
 uniform sampler2D uSkybox;
 uniform sampler2D uHDRCache;
@@ -61,14 +49,10 @@ uniform int uLBVHNodeCount;
 uniform uint uFrameCounter;
 uniform uvec2 uResolution; 
 
-uniform int uEnableSobol;
+uniform int uInvertCDFResolution;
+//uniform float uRmax;
+
 uniform int uEnableSkybox;
-uniform int uEnableImportanceSampling;
-uniform int uEnableMIS;
-uniform int uAllowSingleIS;
-uniform int uEnableDiffuseIS;
-uniform int uEnableSpecularIS;
-uniform int uEnableClearcoatIS;
 
 const vec3 SkyColor = vec3(0.05, 0.05, 0.05);
 
@@ -80,7 +64,7 @@ struct Ray
 
 struct HitResult {
 	bool bIsHit;
-    // bool BIsInside;
+    bool bIsInside;
 	float Distance;
 	vec3 HitPoint;
 	vec3 GeoNormal;
@@ -212,7 +196,6 @@ vec2 SobolVec2(uint i, uint b) {
 	return vec2(u, v);
 }
 
-
 void InitRNG()
 {
     uvec2 fc = uvec2(gl_FragCoord.xy);
@@ -251,34 +234,12 @@ vec2 CranleyPattersonRotation(vec2 sobol2, uvec2 pix, uint bounce)
     return fract(sobol2 + PixelRotation(pix, bounce));
 }
 
-BRDFMaterial DecodeBRDFMaterial(int MaterialSlotID)
-{
-    BRDFMaterial Material;
-    EncodedBRDFMaterial EncodedMaterial = Materials[MaterialSlotID];
-
-    Material.BaseColor = EncodedMaterial.BaseColor.xyz;
-    Material.Emissive = EncodedMaterial.Emissive.xyz;
-    Material.Subsurface = EncodedMaterial.Param1.x;
-    Material.Metallic = EncodedMaterial.Param1.y;
-    Material.Specular = EncodedMaterial.Param1.z;
-    Material.SpecularTint = EncodedMaterial.Param1.w;
-    Material.Roughness = EncodedMaterial.Param2.x;
-    Material.Anisotropic = EncodedMaterial.Param2.y;
-    Material.Sheen = EncodedMaterial.Param2.z;
-    Material.SheenTint = EncodedMaterial.Param2.w;
-    Material.Clearcoat = EncodedMaterial.Param3.x;
-    Material.ClearcoatGloss = EncodedMaterial.Param3.y;
-
-    return Material;
-}
-
 vec3 SampleHemisphere(float xi_1, float xi_2) {
     float z = xi_1;
     float r = max(0, sqrt(1.0 - z*z));
     float phi = 2.0 * PI * xi_2;
     return vec3(r * cos(phi), r * sin(phi), z);
 }
-
 
 vec3 ToNormalHemisphere(vec3 v, vec3 N) {
     N = normalize(N);
@@ -313,41 +274,6 @@ vec3 SampleCosineHemisphere(float xi_1, float xi_2, vec3 N) {
     return L;
 }
 
-vec3 SampleGTR2(float xi_1, float xi_2, vec3 N, float alpha){
-    alpha = max(alpha, 1e-3);
-    float phi = 2.0 * PI * xi_1;
-    float cosTheta = sqrt((1.0 - xi_2)/(1.0 + (alpha*alpha - 1.0) * xi_2));
-    float sinTheta = sqrt(max(0, 1.0 - cosTheta*cosTheta));
-
-    float x = sinTheta * cos(phi);
-    float y = sinTheta * sin(phi);
-    float z = cosTheta;
-
-    vec3 H = vec3(x, y, z);
-    H = ToNormalHemisphere(H, N);
-
-    return H;
-}
-
-vec3 SampleGTR1(float xi_1, float xi_2, vec3 N, float alpha){
-    alpha = max(alpha, 1e-3);
-    float alpha2 = alpha * alpha;
-    float phi = 2.0 * PI * xi_1;
-    float cosTheta = sqrt((1.0 - pow(alpha2, 1- xi_2))/(1 - alpha2));
-    float sinTheta = sqrt(max(0, 1.0 - cosTheta*cosTheta));
-
-    float x = sinTheta * cos(phi);
-    float y = sinTheta * sin(phi);
-    float z = cosTheta;
-
-    vec3 H = vec3(x, y, z);
-    H = ToNormalHemisphere(H, N);
-
-    return H;
-}
-
-
-
 vec3 GetRayDirection(vec2 uv)
 {
     float scale = tan(radians(UCameraParam.AspectAndFovy.y) * 0.5);
@@ -366,7 +292,9 @@ vec3 GetRayDirection(vec2 uv)
 HitResult HitTriangle(int Primitive_index, Ray ray)
 {
     HitResult hit_result;
+
     hit_result.bIsHit = false;
+    hit_result.bIsInside = false;
     hit_result.Distance = INF;
     hit_result.MaterialSlot = -1;
 
@@ -407,8 +335,10 @@ HitResult HitTriangle(int Primitive_index, Ray ray)
     float w1 = 1.0 - u - v;
     vec3 Ns = normalize(w1 * Primitive.N1.xyz + u * Primitive.N2.xyz + v * Primitive.N3.xyz);
 
-    if (dot(Ng, ray.Direction) > 0.0)
+    if (dot(Ng, ray.Direction) > 0.0){
+        hit_result.bIsInside = true;
         Ng = -Ng;
+    }
 
     if (dot(Ns, Ng) < 0.0)
         Ns = -Ns;
@@ -422,7 +352,8 @@ HitResult HitTriangle(int Primitive_index, Ray ray)
 HitResult Hit(Ray ray, int l, int r) 
 {
     HitResult hit_result;
-    hit_result.bIsHit = false;    
+    hit_result.bIsHit = false; 
+    hit_result.bIsInside = false;
     hit_result.Distance = INF;
     hit_result.MaterialSlot = -1; 
 
@@ -462,7 +393,8 @@ float HitAABB(int node_index, Ray ray)
 HitResult HitBVH(Ray ray)
 {
     HitResult hit_result;
-    hit_result.bIsHit = false;    
+    hit_result.bIsHit = false; 
+    hit_result.bIsInside = false;
     hit_result.Distance = INF;
     hit_result.MaterialSlot = -1; 
 
@@ -523,298 +455,6 @@ HitResult HitBVH(Ray ray)
 
 float sqr(float x) { return x*x; }
 
-float SchlickFresnel(float u)
-{
-    float m = clamp(1-u, 0, 1);
-    float m2 = m*m;
-    return m2*m2*m; // pow(m,5)
-}
-
-float GTR1(float NdotH, float a)
-{
-    a = max(a, 1e-3);
-    if (a >= 1) return 1/PI;
-    float a2 = a*a;
-    float t = 1 + (a2-1)*NdotH*NdotH;
-    return (a2-1) / (PI*log(a2)*t);
-}
-
-float GTR2(float NdotH, float a)
-{
-    a = max(a, 1e-3);
-    float a2 = a*a;
-    float t = 1 + (a2-1)*NdotH*NdotH;
-    return a2 / (PI * t*t);
-}
-
-float GTR2_aniso(float NdotH, float HdotX, float HdotY, float ax, float ay)
-{
-    return 1 / (PI * ax*ay * sqr( sqr(HdotX/ax) + sqr(HdotY/ay) + NdotH*NdotH ));
-}
-
-float smithG_GGX(float NdotV, float alphaG)
-{
-    float a = alphaG*alphaG;
-    float b = NdotV*NdotV;
-    return 1 / (NdotV + sqrt(a + b - a*b));
-}
-
-float smithG_GGX_aniso(float NdotV, float VdotX, float VdotY, float ax, float ay)
-{
-    return 1 / (NdotV + sqrt( sqr(VdotX*ax) + sqr(VdotY*ay) + sqr(NdotV) ));
-}
-
-vec3 mon2lin(vec3 x)
-{
-    return pow(x, vec3(2.2));
-}
-
-vec3 BRDF(vec3 L, vec3 V, vec3 N, int MaterialSlotID)
-{
-    BRDFMaterial Mat = DecodeBRDFMaterial(MaterialSlotID);
-
-    float NdotL = max(dot(N, L), 0.0);
-    float NdotV = max(dot(N, V), 0.0);
-    if (NdotL <= 0.0 || NdotV <= 0.0) return vec3(0.0);
-
-    vec3 H = normalize(L + V);
-    float NdotH = max(dot(N, H), 0.0);
-    float LdotH = max(dot(L, H), 0.0);
-
-    vec3 Cdlin = Mat.BaseColor;
-    float Cdlum = 0.3 * Cdlin[0] + 0.6 * Cdlin[1] + 0.1 * Cdlin[2];
-
-    vec3 Ctint = Cdlum > 0.0 ? Cdlin / Cdlum : vec3(1.0);
-    vec3 Cspec0 = mix(Mat.Specular * 0.08 * mix(vec3(1.0), Ctint, Mat.SpecularTint), Cdlin, Mat.Metallic);
-    vec3 Csheen = mix(vec3(1.0), Ctint, Mat.SheenTint);
-
-    float FL = SchlickFresnel(NdotL), FV = SchlickFresnel(NdotV);
-    float Fd90 = 0.5 + 2.0 * LdotH * LdotH * Mat.Roughness;
-    float Fd = mix(1.0, Fd90, FL) * mix(1.0, Fd90, FV);
-
-    float Fss90 = LdotH * LdotH * Mat.Roughness;
-    float Fss = mix(1.0, Fss90, FL) * mix(1.0, Fss90, FV);
-    float ss = 1.25 * (Fss * (1.0 / max(NdotL + NdotV, 1e-6) - 0.5) + 0.5);
-
-    vec3 diffuse = (1.0 / PI) * mix(Fd, ss, Mat.Subsurface) * Cdlin;
-
-    float roughness = max(Mat.Roughness, 0.02);
-    float alpha = roughness * roughness;
-
-    float Ds = GTR2(NdotH, alpha);
-    float FH = SchlickFresnel(LdotH);
-    vec3 Fs = mix(Cspec0, vec3(1.0), FH);
-    float Gs = smithG_GGX(NdotL, roughness) * smithG_GGX(NdotV, roughness);
-
-    vec3 specular = Gs * Fs * Ds;
-
-    vec3 Fsheen = FH * Mat.Sheen * Csheen;
-    diffuse += Fsheen;
-
-    float Dr = GTR1(NdotH, mix(0.1, 0.001, Mat.ClearcoatGloss));
-    float Fr = mix(0.04, 1.0, FH);
-    float Gr = smithG_GGX(NdotL, 0.25) * smithG_GGX(NdotV, 0.25);
-
-    return diffuse * (1.0 - Mat.Metallic)
-         + specular
-         + 0.25 * Mat.Clearcoat * Gr * Fr * Dr; 
-}
-
-
-struct SampleBRDFResult
-{
-    vec3 wi;
-    float cosTheta;
-    float PDF;
-};
-
-
-float PdfDiffuseIS(vec3 wi, vec3 Ns)
-{
-    float cosTheta = dot(Ns, wi);
-    return (cosTheta > 0.0) ? (cosTheta / PI) : 0.0;
-}
-
-float PdfSpecularIS(vec3 wi, vec3 V, vec3 Ns, float alpha)
-{
-    if (dot(Ns, wi) <= 0.0 || dot(Ns, V) <= 0.0)
-        return 0.0;
-
-    vec3 H = wi + V;
-    float HLen2 = dot(H, H);
-    if (HLen2 <= 1e-12)
-        return 0.0;
-    H *= inversesqrt(HLen2);
-
-    float NdotH = dot(Ns, H);
-    float VdotH = dot(V, H);
-
-    if (NdotH <= 0.0 || VdotH <= 1e-6)
-        return 0.0;
-
-    return GTR2(NdotH, alpha) * NdotH / (4.0 * VdotH);
-}
-
-float PdfClearcoatIS(vec3 wi, vec3 V, vec3 Ns, float alpha)
-{
-    if (dot(Ns, wi) <= 0.0 || dot(Ns, V) <= 0.0)
-        return 0.0;
-
-    vec3 H = wi + V;
-    float HLen2 = dot(H, H);
-    if (HLen2 <= 1e-12)
-        return 0.0;
-    H *= inversesqrt(HLen2);
-
-    float NdotH = dot(Ns, H);
-    float VdotH = dot(V, H);
-
-    if (NdotH <= 0.0 || VdotH <= 1e-6)
-        return 0.0;
-
-    return GTR1(NdotH, alpha) * NdotH / (4.0 * VdotH);
-}
-
-SampleBRDFResult SampleBRDF(float xi_1, float xi_2, float xi_3, vec3 V, vec3 Ns, int MaterialSlotID)
-{
-    BRDFMaterial Mat = DecodeBRDFMaterial(MaterialSlotID);
-
-    float alpha_GTR1 = mix(0.1, 0.001, Mat.ClearcoatGloss);
-    float alpha_GTR2 = max(0.001, Mat.Roughness * Mat.Roughness);
-
-    float r_diffuse   = 1.0 - Mat.Metallic;
-    float r_specular  = 1.0;
-    float r_clearcoat = 0.25 * Mat.Clearcoat;
-    float r_sum       = max(r_diffuse + r_specular + r_clearcoat, 1e-8);
-
-    float p_diffuse   = r_diffuse   / r_sum;
-    float p_specular  = r_specular  / r_sum;
-    float p_clearcoat = r_clearcoat / r_sum;
-
-    SampleBRDFResult result;
-    result.wi = vec3(0.0);
-    result.cosTheta = 0.0;
-    result.PDF = 0.0;
-
-    vec3 wi = vec3(0.0);
-
-    if (xi_3 <= p_diffuse)
-    {
-        wi = SampleCosineHemisphere(xi_1, xi_2, Ns);
-    }
-    else if (xi_3 <= p_diffuse + p_specular)
-    {
-        vec3 H = SampleGTR2(xi_1, xi_2, Ns, alpha_GTR2);
-        float VdotH = dot(V, H);
-        if (VdotH <= 1e-6)
-            return result;
-
-        wi = reflect(-V, H);
-    }
-    else
-    {
-        vec3 H = SampleGTR1(xi_1, xi_2, Ns, alpha_GTR1);
-        float VdotH = dot(V, H);
-        if (VdotH <= 1e-6)
-            return result;
-
-        wi = reflect(-V, H);
-    }
-
-    float cosTheta = dot(Ns, wi);
-    if (cosTheta <= 0.0)
-        return result;
-
-    float PDF_diffuse   = PdfDiffuseIS(wi, Ns);
-    float PDF_specular  = PdfSpecularIS(wi, V, Ns, alpha_GTR2);
-    float PDF_clearcoat = PdfClearcoatIS(wi, V, Ns, alpha_GTR1);
-
-    float PDF = p_diffuse   * PDF_diffuse +
-                p_specular  * PDF_specular +
-                p_clearcoat * PDF_clearcoat;
-
-    result.wi = wi;
-    result.cosTheta = cosTheta;
-    result.PDF = max(PDF, 1e-8);
-    return result;
-}
-
-
-SampleBRDFResult SampleSingleIS(float xi_1, float xi_2, vec3 V, vec3 Ns, int MaterialSlotID)
-{
-    BRDFMaterial Mat = DecodeBRDFMaterial(MaterialSlotID);
-
-    float alpha_GTR1 = mix(0.1, 0.001, Mat.ClearcoatGloss);
-    float alpha_GTR2 = max(0.001, Mat.Roughness * Mat.Roughness);
-
-    SampleBRDFResult result;
-    result.wi = vec3(0.0);
-    result.cosTheta = 0.0;
-    result.PDF = 0.0;
-
-    vec3 wi = vec3(0.0);
-    float PDF = 0.0;
-    float cosTheta = 0.0;
-
-    if (uEnableDiffuseIS == 1)
-    {
-        wi = SampleCosineHemisphere(xi_1, xi_2, Ns);
-        cosTheta = dot(Ns, wi);
-        if (cosTheta <= 0.0)
-            return result;
-
-        PDF = cosTheta / PI;
-    }
-    else if (uEnableSpecularIS == 1)
-    {
-        vec3 H = SampleGTR2(xi_1, xi_2, Ns, alpha_GTR2);
-        float VdotH = dot(V, H);
-        if (VdotH <= 1e-6)
-            return result;
-
-        wi = reflect(-V, H);
-
-        float NdotL = dot(Ns, wi);
-        float NdotH = dot(Ns, H);
-        if (NdotL <= 0.0 || NdotH <= 0.0)
-            return result;
-
-        cosTheta = NdotL;
-        PDF = GTR2(NdotH, alpha_GTR2) * NdotH / (4.0 * VdotH);
-    }
-    else if (uEnableClearcoatIS == 1)
-    {
-        vec3 H = SampleGTR1(xi_1, xi_2, Ns, alpha_GTR1);
-        float VdotH = dot(V, H);
-        if (VdotH <= 1e-6)
-            return result;
-
-        wi = reflect(-V, H);
-
-        float NdotL = dot(Ns, wi);
-        float NdotH = dot(Ns, H);
-        if (NdotL <= 0.0 || NdotH <= 0.0)
-            return result;
-
-        cosTheta = NdotL;
-        PDF = GTR1(NdotH, alpha_GTR1) * NdotH / (4.0 * VdotH);
-    }
-    else
-    {
-        wi = SampleCosineHemisphere(xi_1, xi_2, Ns);
-        cosTheta = dot(Ns, wi);
-        if (cosTheta <= 0.0)
-            return result;
-
-        PDF = cosTheta / PI;
-    }
-
-    result.wi = wi;
-    result.cosTheta = cosTheta;
-    result.PDF = max(PDF, 1e-8);
-    return result;
-}
-
 vec3 FetchHDRCache(float xi1, float xi2)
 {
     ivec2 size = textureSize(uHDRCache, 0);
@@ -823,43 +463,6 @@ vec3 FetchHDRCache(float xi1, float xi2)
         min(int(xi2 * float(size.y)), size.y - 1)
     );
     return texelFetch(uHDRCache, p, 0).rgb;
-}
-
-
-float BRDF_PDF_Eval(vec3 wi, vec3 V, vec3 Ns, int MaterialSlotID)
-{
-    if (dot(Ns, wi) <= 0.0 || dot(Ns, V) <= 0.0)
-        return 0.0;
-
-    if (uEnableImportanceSampling == 0)
-        return 1.0 / (2.0 * PI);
-
-    BRDFMaterial Mat = DecodeBRDFMaterial(MaterialSlotID);
-
-    float alpha_GTR1 = mix(0.1, 0.001, Mat.ClearcoatGloss);
-    float alpha_GTR2 = max(0.001, Mat.Roughness * Mat.Roughness);
-
-    if (uAllowSingleIS == 1)
-    {
-        if (uEnableDiffuseIS == 1)   return PdfDiffuseIS(wi, Ns);
-        if (uEnableSpecularIS == 1)  return PdfSpecularIS(wi, V, Ns, alpha_GTR2);
-        if (uEnableClearcoatIS == 1) return PdfClearcoatIS(wi, V, Ns, alpha_GTR1);
-        return PdfDiffuseIS(wi, Ns);
-    }
-
-    float r_diffuse   = 1.0 - Mat.Metallic;
-    float r_specular  = 1.0;
-    float r_clearcoat = 0.25 * Mat.Clearcoat;
-    float r_sum       = max(r_diffuse + r_specular + r_clearcoat, 1e-8);
-
-    float p_diffuse   = r_diffuse   / r_sum;
-    float p_specular  = r_specular  / r_sum;
-    float p_clearcoat = r_clearcoat / r_sum;
-
-    return
-        p_diffuse   * PdfDiffuseIS(wi, Ns) +
-        p_specular  * PdfSpecularIS(wi, V, Ns, alpha_GTR2) +
-        p_clearcoat * PdfClearcoatIS(wi, V, Ns, alpha_GTR1);
 }
 
 float EnvPdf_Eval(vec3 wi)
@@ -878,11 +481,20 @@ float EnvPdf_Eval(vec3 wi)
     return pdfUV / (2.0 * PI * PI * sinThetaPolar);
 }
 
-float PowerHeuristic(float a, float b)
+float PowerHeuristic2(float a, float b)
 {
     float a2 = a * a;
     float b2 = b * b;
     float s = a2 + b2;
+    return (s > 1e-20) ? (a2 / s) : 0.0;
+}
+
+float PowerHeuristic3(float a, float b, float c)
+{
+    float a2 = a * a;
+    float b2 = b * b;
+    float c2 = c * c;
+    float s = a2 + b2 + c2;
     return (s > 1e-20) ? (a2 / s) : 0.0;
 }
 
@@ -926,18 +538,369 @@ vec3 SampleHDR(float xi_env1, float xi_env2,  vec3 V, HitResult hit_result){
 
     float weight = 1.0;
     
-    if(uEnableMIS == 1)
-    {
-        float pdfBRDF = BRDF_PDF_Eval(wi, V, Ns, hit_result.MaterialSlot);
-        weight = PowerHeuristic(pdfEnv, pdfBRDF);
-    }
+//    float pdfBRDF = BRDF_PDF_Eval(wi, V, Ns, hit_result.MaterialSlot);
+//    weight = PowerHeuristic(pdfEnv, pdfBRDF);
+    
+//    return weight * envColor
+//         * BRDF(wi, V, Ns, hit_result.MaterialSlot)
+//         * NdotL
+//         / max(pdfEnv, 1e-6);
 
-    return weight * envColor
-         * BRDF(wi, V, Ns, hit_result.MaterialSlot)
-         * NdotL
-         / max(pdfEnv, 1e-6);
+    return SkyColor;
+
 }
 
+float FresnelDielectric(float cosThetaI, float etaI, float etaT)
+{
+    cosThetaI = clamp(abs(cosThetaI), 0.0, 1.0);
+
+    float sin2ThetaI = max(0.0, 1.0 - cosThetaI * cosThetaI);
+    float eta = etaI / etaT;
+    float sin2ThetaT = eta * eta * sin2ThetaI;
+
+    // Total internal reflection
+    if (sin2ThetaT >= 1.0)
+        return 1.0;
+
+    float cosThetaT = sqrt(max(0.0, 1.0 - sin2ThetaT));
+
+    float Rs = (etaI * cosThetaI - etaT * cosThetaT) /
+               (etaI * cosThetaI + etaT * cosThetaT);
+    float Rp = (etaT * cosThetaI - etaI * cosThetaT) /
+               (etaT * cosThetaI + etaI * cosThetaT);
+
+    return 0.5 * (Rs * Rs + Rp * Rp);
+}
+
+float FtIn(float cosThetaI, float eta)
+{
+    return 1.0 - FresnelDielectric(cosThetaI, 1.0, eta);
+}
+
+float FtOut(float cosThetaO, float eta)
+{
+    return 1.0 - FresnelDielectric(cosThetaO, eta, 1.0);
+}
+
+vec3 BurleyProfile(float rTrue, vec3 d)
+{
+    float r = max(rTrue, 1e-4);
+    vec3 dd = max(d, vec3(1e-4));
+
+    vec3 e1 = exp(-r / dd);
+    vec3 e3 = exp(-r / (3.0 * dd));
+
+    return (e1 + e3) / (8.0 * PI * dd * r);
+}
+
+
+void DecodeBSSRDFMaterial(in int materialSlot, out vec3 baseColor, out vec3 radius, out float eta, out float scale)
+{
+    BSSRDFMaterial mat = Materials[materialSlot];
+    baseColor   = mat.BaseColor.rgb;
+    radius   = mat.Radius.rgb;
+    eta = mat.Eta.r;
+    scale = mat.Scale.r;
+}
+
+vec3 EvalBSSRDF(vec3 wi, vec3 pi, vec3 Ni,
+                vec3 wo, vec3 po, vec3 No,
+                int materialSlot)
+{
+    vec3 baseColor, radius;
+    float eta, scale;
+    DecodeBSSRDFMaterial(materialSlot, baseColor, radius, eta, scale);
+
+    float rTrue = length(pi - po);
+
+    float cosThetaIn  = max(dot(Ni, wi), 0.0);
+    float cosThetaOut = max(dot(No, wo), 0.0);
+
+    vec3 d = 0.25 * scale * radius / PI;
+
+    //float ftIn  = FtIn(cosThetaIn, eta);
+    //float ftOut = FtOut(cosThetaOut, eta);
+
+    //return ftIn * BurleyProfile(rTrue, A, d) * ftOut;
+
+    return baseColor * BurleyProfile(rTrue, d);
+}
+
+float SampleUnitInverseCDF(float xi)
+{
+    xi = clamp(xi, 0.0, 1.0);
+
+    float u = xi * float(uInvertCDFResolution - 1);
+    int i0 = clamp(int(floor(u)), 0, uInvertCDFResolution - 2);
+    int i1 = i0 + 1;
+    float t = u - float(i0);
+
+    return mix(InvertCDF[i0], InvertCDF[i1], t);
+}
+
+float BurleyRadiusCDF(float r, float d)
+{
+    return 1.0
+         - 0.25 * exp(-r / d)
+         - 0.75 * exp(-r / (3.0 * d));
+}
+
+float BurleyRadiusPdf(float r, float d, float rMax)
+{
+    float rr = max(r, 1e-4);
+    float dd = max(d, 1e-4);
+
+    float pdf = 0.25 / dd * (exp(-rr / dd) + exp(-rr / (3.0 * dd)));
+
+    float norm = BurleyRadiusCDF(rMax, dd);
+    pdf /= max(norm, 1e-6);
+
+    return pdf;
+}
+
+float SampleBurleyRadiusTruncated(float xi, float d, float rMax)
+{
+    float cdfMax = BurleyRadiusCDF(rMax, d);
+    float u = xi * cdfMax;   
+    return SampleUnitInverseCDF(u) * d;
+}
+
+float BurleyDiskPdf(float rho, float d, float rMax)
+{
+    return BurleyRadiusPdf(rho, d, rMax) / (2.0 * PI * max(rho, 1e-4));
+}
+
+void BuildOrthonormalBasis(in vec3 N, out vec3 T, out vec3 B)
+{
+    vec3 up = (abs(N.y) < 0.999) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    T = normalize(cross(up, N));
+    B = normalize(cross(N, T));
+}
+
+void SelectProjectionAxis(
+    float xiAxis,
+    vec3 N, vec3 T, vec3 B,
+    out vec3 axis,
+    out vec3 diskU,
+    out vec3 diskV,
+    out float axisPdf)
+{
+    if (xiAxis < 0.25)
+    {
+        axis = T;
+        diskU = B;
+        diskV = N;
+        axisPdf = 0.25;
+    }
+    else if (xiAxis < 0.5)
+    {
+        axis = B;
+        diskU = N;
+        diskV = T;
+        axisPdf = 0.25;
+    }
+    else
+    {
+        axis = N;
+        diskU = T;
+        diskV = B;
+        axisPdf = 0.50;
+    }
+}
+
+bool CollectProbeHits(
+    vec3 segStart,
+    vec3 segDir,
+    float segLen,
+    int materialSlot,
+    out HitResult hits[8],
+    out int hitCount)
+{
+    hitCount = 0;
+
+    vec3 currStart = segStart;
+    float traveled = 0.0;
+
+    for (int iter = 0; iter < 32 && hitCount < 8; ++iter)
+    {
+        Ray ray;
+        ray.Start = currStart;
+        ray.Direction = segDir;
+
+        HitResult h = HitBVH(ray);
+        if (!h.bIsHit)
+            break;
+
+        if (traveled + h.Distance > segLen)
+            break;
+
+        traveled += h.Distance;
+
+        if (h.MaterialSlot == materialSlot)
+        {   
+            if(h.bIsInside)
+            {
+                h.GeoNormal = -h.GeoNormal;
+                if(dot(h.GeoNormal, h.ShadeNormal) < 0.0)
+                    h.ShadeNormal = -h.ShadeNormal;
+            }
+            hits[hitCount++] = h;
+        }
+
+        float advance = h.Distance + 1e-4;
+        currStart += advance * segDir;
+        traveled += 1e-4;
+
+        if (traveled >= segLen)
+            break;
+    }
+
+    return hitCount > 0;
+}
+
+float EvalPosPdf(vec3 axis, vec3 po, vec3 pi, vec3 Ng, int materialSlot, float axisProb)
+{
+    vec3 delta = pi - po;
+    float h = dot(delta, axis);
+    vec3 proj = delta - h * axis;
+    float rho = length(proj);
+
+    BSSRDFMaterial mat = Materials[materialSlot];
+
+    vec3 baseColor, radius;
+    float eta, scale;
+    DecodeBSSRDFMaterial(materialSlot, baseColor, radius, eta, scale);
+    vec3 d = 0.25 * scale * radius / PI;
+    float Rmax = 16 * d.r;
+    float dPdf = max((d.r + d.g + d.b)/3.0f, 1e-4);
+
+    if (rho >= Rmax)
+        return 0.0;
+
+    float absVdotNg = abs(dot(axis, Ng));
+    if (absVdotNg < 1e-6)
+        return 0.0;
+
+
+    vec3 q = po + proj;
+    float halfLen = sqrt(max(Rmax * Rmax - rho * rho, 0.0));
+    vec3 segStart = q - halfLen * axis;
+    float segLen  = 2.0 * halfLen;
+
+    HitResult hits[8];
+    int hitCount = 0;
+    if (!CollectProbeHits(segStart, axis, segLen, materialSlot, hits, hitCount))
+        return 0.0;
+
+    return axisProb
+         * BurleyDiskPdf(rho, dPdf, Rmax)
+         * absVdotNg
+         / float(hitCount);
+}
+
+
+struct SampleBSSRDFResult
+{
+    bool bHasResult;
+    vec3 pi;
+    vec3 wi;
+    vec3 Ns;
+    vec3 Ng;
+    vec3 axis;
+
+    float rho;        // projected radius
+    float pdfPos;     // position pdf
+    float pdfDir;     // direction pdf
+    float weightMIS;
+    float cosTheta;   // max(dot(Ns, wi), 0)
+    int hitCount;
+};
+
+SampleBSSRDFResult SampleBSSRDF(vec3 wo, vec3 po, vec3 No, int materialSlot)
+{
+    SampleBSSRDFResult result;
+    result.bHasResult = false;
+    result.pdfPos = 0.0;
+    result.pdfDir = 0.0;
+    result.cosTheta = 0.0;
+    result.rho = 0.0;
+    result.hitCount = 0;
+
+    BSSRDFMaterial mat = Materials[materialSlot];
+    vec3 baseColor, radius;
+    float eta, scale;
+    DecodeBSSRDFMaterial(materialSlot, baseColor, radius, eta, scale);
+    vec3 d = 0.25 * scale * radius / PI;
+    float Rmax = 16 * d.r;
+
+    float dPdf = max((d.r + d.g + d.b)/3.0f, 1e-4);
+
+    vec3 N = normalize(No);
+    vec3 T, B;
+    BuildOrthonormalBasis(N, T, B);
+
+    float xiR    = rand();
+    float xiAxis = rand();
+    float xiPhi  = rand();
+
+    float rho = SampleBurleyRadiusTruncated(rand(), dPdf, Rmax);
+    rho = min(rho, Rmax - 1e-4);
+
+    float phi = 2.0 * PI * xiPhi;
+
+    vec3 axis, diskU, diskV;
+    float axisPdf;
+    SelectProjectionAxis(xiAxis, N, T, B, axis, diskU, diskV, axisPdf);
+
+    vec3 q = po + rho * (cos(phi) * diskU + sin(phi) * diskV);
+
+    float halfLen = sqrt(max(Rmax * Rmax - rho * rho, 0.0));
+    vec3 segStart = q - halfLen * axis;
+    float segLen  = 2.0 * halfLen;
+
+    HitResult hits[8];
+    int hitCount = 0;
+    if (!CollectProbeHits(segStart, axis, segLen, materialSlot, hits, hitCount))
+        return result;
+
+    int selected = min(int(floor(rand() * float(hitCount))), hitCount - 1);
+    HitResult h = hits[selected];
+
+    vec3 Ns = normalize(h.ShadeNormal);
+    vec3 Ng = normalize(h.GeoNormal);
+
+    vec3 wi = SampleCosineHemisphere(rand(), rand(), Ns);
+    float cosTheta = max(dot(Ns, wi), 0.0);
+    if (cosTheta <= 0.0 || dot(Ng, wi) <= 0.0)
+        return result;
+
+    float pdfDir = cosTheta / PI;
+
+    float pdfPos = axisPdf
+                 * BurleyDiskPdf(rho, dPdf, Rmax)
+                 * abs(dot(axis, Ng))
+                 / float(hitCount);
+    
+    float pdf_diskU =  EvalPosPdf(diskU, po, h.HitPoint, Ng, materialSlot, abs(dot(diskU, N)) > 0.999 ? 0.5 : 0.25);
+    float pdf_diskV =  EvalPosPdf(diskV, po, h.HitPoint, Ng, materialSlot, abs(dot(diskV, N)) > 0.999 ? 0.5 : 0.25);
+
+    float weightMIS = PowerHeuristic3(pdfPos, pdf_diskU, pdf_diskV);
+
+    result.bHasResult = true;
+    result.pi = h.HitPoint;
+    result.wi = wi;
+    result.Ns = Ns;
+    result.Ng = Ng;
+    result.axis = axis;
+    result.rho = rho;
+    result.pdfPos = pdfPos;
+    result.pdfDir = pdfDir;
+    result.weightMIS = weightMIS;
+    result.cosTheta = cosTheta;
+    result.hitCount = hitCount;
+
+    return result;
+}
 
 
 vec3 PathTracing(Ray ray, int maxBounce)
@@ -954,8 +917,7 @@ vec3 PathTracing(Ray ray, int maxBounce)
     float xi_env2 = rand();
     float xi_1 = rand();
 
-    float pdf_BRDF = 0.0;
-
+    float pdf_BSSRDF = 0.0;
     for (int bounce = 0; bounce < maxBounce; bounce++)
     {
         HitResult hit_result = HitBVH(currRay);
@@ -965,17 +927,7 @@ vec3 PathTracing(Ray ray, int maxBounce)
         {
             if(uEnableSkybox == 1)
             {
-                if (bounce == 0)
-                    finalColor += throughput * SampleSkybox(currRay.Direction);
-                else{
-                    if(uEnableMIS > 0)
-                    {
-                        float pdfEnv = EnvPdf_Eval(currRay.Direction);
-                        float weight = PowerHeuristic(pdf_BRDF, pdfEnv);
-                        finalColor += weight * throughput * SampleSkybox(currRay.Direction);
-                    }
-                }
-
+                finalColor += throughput * SampleSkybox(currRay.Direction);
             }
             else
             {
@@ -984,68 +936,33 @@ vec3 PathTracing(Ray ray, int maxBounce)
             break;
         }
 
-        xi_brdf1 = rand();
-        xi_brdf2 = rand();
-        xi_env1 = rand();
-        xi_env2 = rand();
-        xi_1 = rand();
-
         vec3 Ng = normalize(hit_result.GeoNormal);
         vec3 Ns = normalize(hit_result.ShadeNormal);
 
-        SampleBRDFResult sample_result;
-        sample_result.wi = vec3(0.0);
-        sample_result.cosTheta = 0.0;
-        sample_result.PDF = 0.0;
 
-        if (uEnableSobol == 1)
-        {
-            vec2 sobol2 = SobolVec2(uFrameCounter + 1u, 2 * bounce);
-            vec2 p = CranleyPattersonRotation(sobol2, pix, 2 * bounce);
-            xi_brdf1 = p.x;
-            xi_brdf2 = p.y;
-            sobol2 = SobolVec2(uFrameCounter + 1u, 2 * bounce + 1);
-            p = CranleyPattersonRotation(sobol2, pix, 2 * bounce + 1);
-            xi_env1 = p.x;
-            xi_env2 = p.y;
-        }
+        BSSRDFMaterial Mat = Materials[hit_result.MaterialSlot];
+        finalColor += throughput * Mat.Emissive.rgb;
 
-        BRDFMaterial Mat = DecodeBRDFMaterial(hit_result.MaterialSlot);
-        finalColor += throughput * Mat.Emissive;
+//        if(uEnableSkybox == 1)
+//        {
+//            finalColor += throughput * SampleHDR(xi_env1, xi_env2, V, hit_result);
+//        }
+    
+        SampleBSSRDFResult s = SampleBSSRDF(V, hit_result.HitPoint, Ns, hit_result.MaterialSlot);
 
-        if(uEnableSkybox == 1)
-        {
-            finalColor += throughput * SampleHDR(xi_env1, xi_env2, V, hit_result);
-        }
+        if (!s.bHasResult || s.pdfPos <= 0.0 || s.pdfDir <= 0.0)
+            break; 
 
-        if (uEnableImportanceSampling == 1)
-        {
-            if (uAllowSingleIS == 1)
-                sample_result = SampleSingleIS(xi_brdf1, xi_brdf2, V, Ns, hit_result.MaterialSlot);
-            else
-                sample_result = SampleBRDF(xi_brdf1, xi_brdf2, xi_1, V, Ns, hit_result.MaterialSlot);
-        }
-        else
-        {
-            sample_result.wi = ToNormalHemisphere(SampleHemisphere(xi_brdf1, xi_brdf2), Ns);
-            sample_result.cosTheta = max(dot(sample_result.wi, Ns), 0.0);
-            sample_result.PDF = 1.0 / (2.0 * PI);
-        }
+        vec3 S = EvalBSSRDF(
+            s.wi, s.pi, s.Ns,
+            V, hit_result.HitPoint, Ns,
+            hit_result.MaterialSlot
+        );
 
-        if (sample_result.cosTheta <= 0.0 || sample_result.PDF <= 1e-8)
-            break;
+        throughput *= s.weightMIS * S * s.cosTheta / max(s.pdfPos * s.pdfDir, 1e-7);
 
-        if (dot(sample_result.wi, Ng) <= 0.0)
-            break;
-
-        pdf_BRDF = sample_result.PDF;
-
-        throughput *= BRDF(sample_result.wi, V, Ns, hit_result.MaterialSlot)
-                   * sample_result.cosTheta
-                   / sample_result.PDF;
-
-        currRay.Start = hit_result.HitPoint + Ng * 1e-4;
-        currRay.Direction = sample_result.wi;
+        currRay.Start = s.pi + s.Ng * 1e-4;
+        currRay.Direction = s.wi;
 
         if (bounce >= 3)
         {
@@ -1072,12 +989,8 @@ void main()
 
     vec4 LastFrameColor = texelFetch(uLastFrame, pix , 0);
 
-    if(uFrameCounter < 4096)
+    if(uFrameCounter < 2048)
         FragColor = mix(LastFrameColor, Color, 1.0/float(uFrameCounter+1));
     else
         FragColor = LastFrameColor;
- 
 }
-
-
-

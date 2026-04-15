@@ -6,7 +6,6 @@
 #include "KH_MaterialEditor.h"
 #include "Scene/KH_Scene.h"
 
-
 class KH_SceneBase;
 
 enum class KH_GizmoOperation
@@ -66,10 +65,10 @@ public:
 
     GLFWwindow* GLFWwindow() const;
 
-    // 在 Canvas 窗口内部调用
     void DrawCanvasGizmos();
 
-    void SetSelectedObjectID(int ObjectID, int MeshID = 0);
+    // 默认 MeshID 改成 -1，表示“选中 Object，但未选中具体 Mesh”
+    void SetSelectedObjectID(int ObjectID, int MeshID = -1);
     bool DeleteSelectedObject(bool OnlyDeleteModel = true);
 
     bool AddExternalModelFromFile(const std::string& filePath, int materialSlotID = 0);
@@ -118,7 +117,7 @@ private:
     KH_GlobalInfo GlobalInfo;
     KH_SceneTree SceneTree;
     KH_MaterialEditor MaterialsEditor;
-    KH_ShaderFeatures ShaderFeatures;
+    KH_RenderPipeline RenderPipeline;
 
     std::string CurrentSceneXmlPath;
 
@@ -156,8 +155,6 @@ private:
     void DrawCanvasContextMenu();
 
     int EnsureUsableMaterialSlot(int requestedSlot);
+    void EnsureDefaultMaterialsForAllShaderFeatures();
     void InitializeSpawnedObjectTransform(KH_Object& object);
 };
-
-
-

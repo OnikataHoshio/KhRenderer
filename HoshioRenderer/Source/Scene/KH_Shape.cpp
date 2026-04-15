@@ -57,65 +57,99 @@ KH_InspectorEditResult KH_Object::DrawInspector()
     ImGui::Spacing();
     ImGui::Unindent(20.0f);
 
-    if (KH_Model* model = dynamic_cast<KH_Model*>(this))
+    KH_Editor& editor = KH_Editor::Instance();
+    KH_GpuLBVHScene& scene = editor.Scene;
+
+    KH_ShaderFeatureBase* ActiveFeature = scene.GetActiveShaderFeature();
+    const KH_ShaderFeatureType ActiveType = scene.GetActiveShaderFeatureType();
+
+    auto DrawMaterialCombo = [&](int& MaterialID, auto&& ApplyMaterial)
     {
-        KH_Editor& editor = KH_Editor::Instance();
-        KH_GpuLBVHScene& scene = editor.Scene;
-
-        const int selectedMeshID = editor.GetSelectedObjectMeshID();
-        const auto& meshes = model->GetMeshes();
-
         ImGui::SeparatorText("Material");
         ImGui::Indent(20.0f);
 
-        if (scene.Materials.empty())
+        if (!ActiveFeature)
         {
-            ImGui::TextDisabled("No materials in scene");
-        }
-        else if (selectedMeshID < 0 || selectedMeshID >= static_cast<int>(meshes.size()))
-        {
-            ImGui::TextDisabled("No mesh selected");
+            ImGui::TextDisabled("No active shader feature");
         }
         else
         {
-            int materialID = meshes[selectedMeshID].GetMaterialSlotID();
-            materialID = std::clamp(materialID, 0, static_cast<int>(scene.Materials.size()) - 1);
-
-            std::vector<std::string> labels;
-            std::vector<const char*> items;
-            labels.reserve(scene.Materials.size());
-            items.reserve(scene.Materials.size());
-
-            for (int i = 0; i < static_cast<int>(scene.Materials.size()); ++i)
+            const int MaterialCount = ActiveFeature->GetMaterialCount();
+            if (MaterialCount <= 0)
             {
-                labels.push_back("Material " + std::to_string(i));
+                ImGui::TextDisabled("No materials in active shader feature");
             }
-
-            for (auto& s : labels)
+            else
             {
-                items.push_back(s.c_str());
+                MaterialID = std::clamp(MaterialID, 0, MaterialCount - 1);
+
+                std::vector<std::string> labels;
+                std::vector<const char*> items;
+                labels.reserve(MaterialCount);
+                items.reserve(MaterialCount);
+
+                for (int i = 0; i < MaterialCount; ++i)
+                {
+                    labels.push_back("Material " + std::to_string(i));
+                }
+
+                for (auto& s : labels)
+                {
+                    items.push_back(s.c_str());
+                }
+
+                if (ImGui::Combo("Material", &MaterialID, items.data(), static_cast<int>(items.size())))
+                {
+                    MaterialID = std::clamp(MaterialID, 0, MaterialCount - 1);
+                    ApplyMaterial(MaterialID);
+
+                    scene.UpdatePrimitiveSSBO();
+                    editor.RequestFrameReset();
+
+                    result.bValueChanged = true;
+                    result.CommitType = KH_InspectorCommitType::UpdateMaterial;
+                }
             }
-
-            if (ImGui::Combo("Material", &materialID, items.data(), static_cast<int>(items.size())))
-            {
-                materialID = std::clamp(materialID, 0, static_cast<int>(scene.Materials.size()) - 1);
-
-                model->SetMeshMaterialSlotID(materialID, selectedMeshID);
-                
-                scene.UpdatePrimitiveSSBO();
-                editor.RequestFrameReset();
-
-                result.bValueChanged = true;
-                result.CommitType = KH_InspectorCommitType::UpdateMaterial;
-            }
-
-            ImGui::TextDisabled("Selected Mesh ID: %d", selectedMeshID);
         }
 
         ImGui::Spacing();
         ImGui::Unindent(20.0f);
-    }
+    };
 
+    if (KH_Model* model = dynamic_cast<KH_Model*>(this))
+    {
+        const int SelectedMeshID = editor.GetSelectedObjectMeshID();
+        auto& Meshes = model->GetMeshes();
+
+        if (SelectedMeshID < 0 || SelectedMeshID >= static_cast<int>(Meshes.size()))
+        {
+            ImGui::SeparatorText("Material");
+            ImGui::Indent(20.0f);
+            ImGui::TextDisabled("No mesh selected");
+            ImGui::Spacing();
+            ImGui::Unindent(20.0f);
+        }
+        else
+        {
+            int MaterialID = Meshes[SelectedMeshID].GetMaterialSlotID(ActiveType);
+
+            DrawMaterialCombo(MaterialID, [&](int NewMaterialID)
+            {
+                model->SetMeshMaterialSlotID(ActiveType, NewMaterialID, SelectedMeshID);
+            });
+
+            ImGui::TextDisabled("Selected Mesh ID: %d", SelectedMeshID);
+        }
+    }
+    else if (KH_Primitive* Primitive = dynamic_cast<KH_Primitive*>(this))
+    {
+        int MaterialID = Primitive->GetMaterialSlotID(ActiveType);
+
+        DrawMaterialCombo(MaterialID, [&](int NewMaterialID)
+        {
+            Primitive->SetMaterialSlotID(ActiveType, NewMaterialID);
+        });
+    }
 
     return result;
 }
@@ -298,6 +332,8 @@ glm::mat3 KH_Object::UpdateNormalMatrix()
     return NormalMatrix;
 }
 
+
+
 void KH_Object::OnTransformChanged()
 {
     UpdateModelMatrix();
@@ -319,6 +355,21 @@ void KH_Hitable::OnTransformChanged()
 {
 	KH_Object::OnTransformChanged();
     UpdateAABB();
+}
+
+KH_Primitive::KH_Primitive()
+{
+    MaterialSlotIDs.fill(KH_MATERIAL_UNDEFINED_SLOT);
+}
+
+int KH_Primitive::GetMaterialSlotID(KH_ShaderFeatureType ShaderFeatureType) const
+{
+    return MaterialSlotIDs[KH_ShaderFeatureTypeToIndex(ShaderFeatureType)];
+}
+
+void KH_Primitive::SetMaterialSlotID(KH_ShaderFeatureType ShaderFeatureType, int InMaterialSlotID)
+{
+    MaterialSlotIDs[KH_ShaderFeatureTypeToIndex(ShaderFeatureType)] = InMaterialSlotID;
 }
 
 glm::vec3 KH_Primitive::GetMinPos() const
@@ -456,7 +507,9 @@ uint32_t KH_Triangle::GetPrimitiveCount() const
     return 1;
 }
 
-void KH_Triangle::EncodePrimitives(std::vector<KH_PrimitiveEncoded>& outPrimitives) const
+void KH_Triangle::EncodePrimitives(
+    std::vector<KH_PrimitiveEncoded>& outPrimitives,
+    KH_ShaderFeatureType ShaderFeatureType) const
 {
     KH_TriangleWorldData Data = GetWorldData();
 
@@ -471,7 +524,7 @@ void KH_Triangle::EncodePrimitives(std::vector<KH_PrimitiveEncoded>& outPrimitiv
     primitive.Triangle.N3 = glm::vec4(Data.N3, 0.0f);
 
     primitive.PrimitiveType = glm::ivec2(static_cast<int>(KH_PrimitiveType::Triangle), 0);
-    primitive.MaterialSlotID = glm::ivec2(MaterialSlotID, 0);
+    primitive.MaterialSlotID = glm::ivec2(GetMaterialSlotID(ShaderFeatureType), 0);
 
     outPrimitives.push_back(primitive);
 }

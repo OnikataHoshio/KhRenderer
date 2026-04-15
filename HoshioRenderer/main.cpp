@@ -10,7 +10,7 @@ int main()
 	KH_Editor::SetEditorWidth(1480);
 	KH_Editor::SetEditorHeight(920);
 	KH_Editor::SetTitle("KH_Renderer");
-	KH_Editor::SetDefaultScenePath("Assert/Scenes/ShaderBall.xml");
+	KH_Editor::SetDefaultScenePath("Assert/Scenes/Bunny.xml");
 	KH_Editor::Instance();
 
 	KH_Model& Bunny = KH_DefaultModels::Instance().Bunny;

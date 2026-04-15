@@ -138,6 +138,11 @@ public:
     KH_Shader DisneyBRDF_3;
     KH_Shader DisneyBRDF_4;
 
+    KH_Shader BSSRDF_0;
+    KH_Shader BSSRDF_1;
+    KH_Shader BSSRDF_2;
+    KH_Shader BSSRDF_3;
+
     KH_Shader GammaCorrectionShader;
     KH_Shader DrawSobolShader;
 };

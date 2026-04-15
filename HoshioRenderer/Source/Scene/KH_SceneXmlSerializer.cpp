@@ -99,6 +99,44 @@ namespace
         return true;
     }
 
+    bool StringToShaderFeatureType(const char* text, KH_ShaderFeatureType& outType)
+    {
+        if (text == nullptr)
+            return false;
+
+        auto result = magic_enum::enum_cast<KH_ShaderFeatureType>(text);
+        if (!result.has_value())
+            return false;
+
+        outType = result.value();
+        return true;
+    }
+
+    const char* ShaderFeatureTypeToString(KH_ShaderFeatureType type)
+    {
+        return magic_enum::enum_name(type).data();
+    }
+
+    bool EnsureShaderFeatureExists(KH_SceneBase& scene, KH_ShaderFeatureType type)
+    {
+        if (scene.GetShaderFeature(type) != nullptr)
+            return true;
+
+        switch (type)
+        {
+        case KH_ShaderFeatureType::DisneyBRDF:
+            scene.EmplaceShaderFeature<KH_DisneyBRDF>(KH_ShaderFeatureType::DisneyBRDF);
+            return true;
+
+        case KH_ShaderFeatureType::BSSRDF:
+            scene.EmplaceShaderFeature<KH_BSSRDF>(KH_ShaderFeatureType::BSSRDF);
+            return true;
+
+        default:
+            return false;
+        }
+    }
+
     void WriteTransform(XMLDocument& doc, XMLElement* parent, const KH_Model& model)
     {
         XMLElement* transformElem = doc.NewElement("Transform");
@@ -127,7 +165,7 @@ namespace
             model.SetScale(scale);
     }
 
-    void WriteMaterial(XMLDocument& doc, XMLElement* materialsElem, const KH_BRDFMaterial& mat, int id)
+    void WriteDisneyMaterial(XMLDocument& doc, XMLElement* materialsElem, const KH_BRDFMaterial& mat, int id)
     {
         XMLElement* materialElem = doc.NewElement("Material");
 
@@ -153,7 +191,7 @@ namespace
         materialsElem->InsertEndChild(materialElem);
     }
 
-    KH_BRDFMaterial ReadMaterial(const XMLElement* materialElem)
+    KH_BRDFMaterial ReadDisneyMaterial(const XMLElement* materialElem)
     {
         KH_BRDFMaterial mat{};
 
@@ -184,39 +222,233 @@ namespace
         return mat;
     }
 
-    void WriteMeshMaterialSlots(XMLDocument& doc, XMLElement* modelElem, KH_Model& model)
+    void WriteBSSRDFMaterial(XMLDocument& doc, XMLElement* materialsElem, const KH_BSSRDFMaterial& mat, int id)
+    {
+        XMLElement* materialElem = doc.NewElement("Material");
+
+        materialElem->SetAttribute("id", id);
+        materialElem->SetAttribute("emissive", Vec3ToString(mat.Emissive).c_str());
+        materialElem->SetAttribute("baseColor", Vec3ToString(mat.BaseColor).c_str());
+        materialElem->SetAttribute("radius", Vec3ToString(mat.Radius).c_str());
+        materialElem->SetAttribute("eta", mat.Eta);
+        materialElem->SetAttribute("scale", mat.Scale);
+
+        materialsElem->InsertEndChild(materialElem);
+    }
+
+    KH_BSSRDFMaterial ReadBSSRDFMaterial(const XMLElement* materialElem)
+    {
+        KH_BSSRDFMaterial mat{};
+
+        glm::vec3 baseColor(1.0f);
+        glm::vec3 emissive(0.0f);
+        glm::vec3 radius(1.0f, 0.2f, 0.1f);
+
+
+        StringToVec3(materialElem->Attribute("emissive"), emissive);
+        StringToVec3(materialElem->Attribute("baseColor"), baseColor);
+        StringToVec3(materialElem->Attribute("radius"), radius);
+
+        mat.Emissive = emissive;
+        mat.BaseColor = baseColor;
+        mat.Radius = radius;
+
+        materialElem->QueryFloatAttribute("eta", &mat.Eta);
+        materialElem->QueryFloatAttribute("scale", &mat.Scale);
+        return mat;
+    }
+
+    void WriteSceneSettings(XMLDocument& doc, XMLElement* root, const KH_SceneBase& scene)
+    {
+        XMLElement* settingsElem = doc.NewElement("SceneSettings");
+        settingsElem->SetAttribute(
+            "activeShaderFeature",
+            ShaderFeatureTypeToString(scene.GetActiveShaderFeatureType()));
+        root->InsertEndChild(settingsElem);
+    }
+
+    bool ReadSceneSettings(const XMLElement* root, KH_ShaderFeatureType& outActiveType)
+    {
+        outActiveType = KH_ShaderFeatureType::DisneyBRDF;
+
+        const XMLElement* settingsElem = root->FirstChildElement("SceneSettings");
+        if (settingsElem == nullptr)
+            return true;
+
+        const char* activeTypeText = settingsElem->Attribute("activeShaderFeature");
+        if (activeTypeText == nullptr)
+            return true;
+
+        return StringToShaderFeatureType(activeTypeText, outActiveType);
+    }
+
+    void WriteShaderFeature(XMLDocument& doc, XMLElement* featuresElem, const KH_SceneBase& scene, KH_ShaderFeatureType type)
+    {
+        const KH_ShaderFeatureBase* feature = scene.GetShaderFeature(type);
+        if (feature == nullptr)
+            return;
+
+        XMLElement* featureElem = doc.NewElement("ShaderFeature");
+        featureElem->SetAttribute("type", ShaderFeatureTypeToString(type));
+        featureElem->SetAttribute("enabled", feature->IsEnabled());
+
+        XMLElement* materialsElem = doc.NewElement("Materials");
+        featureElem->InsertEndChild(materialsElem);
+
+        if (const KH_DisneyBRDF* disney = dynamic_cast<const KH_DisneyBRDF*>(feature))
+        {
+            const auto& materials = disney->GetMaterials();
+            for (int i = 0; i < static_cast<int>(materials.size()); ++i)
+            {
+                WriteDisneyMaterial(doc, materialsElem, materials[i], i);
+            }
+        }
+        else if (const KH_BSSRDF* bssrdf = dynamic_cast<const KH_BSSRDF*>(feature))
+        {
+            const auto& materials = bssrdf->GetMaterials();
+            for (int i = 0; i < static_cast<int>(materials.size()); ++i)
+            {
+                WriteBSSRDFMaterial(doc, materialsElem, materials[i], i);
+            }
+        }
+
+        featuresElem->InsertEndChild(featureElem);
+    }
+
+    void WriteShaderFeatures(XMLDocument& doc, XMLElement* root, const KH_SceneBase& scene)
+    {
+        XMLElement* featuresElem = doc.NewElement("ShaderFeatures");
+        root->InsertEndChild(featuresElem);
+
+        for (size_t i = 0; i < KH_ShaderFeatureTypeCount; ++i)
+        {
+            const KH_ShaderFeatureType type = static_cast<KH_ShaderFeatureType>(i);
+            WriteShaderFeature(doc, featuresElem, scene, type);
+        }
+    }
+
+    bool ReadShaderFeature(const XMLElement* featureElem, KH_SceneBase& scene)
+    {
+        KH_ShaderFeatureType type = KH_ShaderFeatureType::DisneyBRDF;
+        if (!StringToShaderFeatureType(featureElem->Attribute("type"), type))
+            return false;
+
+        if (!EnsureShaderFeatureExists(scene, type))
+            return false;
+
+        KH_ShaderFeatureBase* feature = scene.GetShaderFeature(type);
+        if (feature == nullptr)
+            return false;
+
+        feature->SetEnabled(featureElem->BoolAttribute("enabled", true));
+        feature->ClearMaterials();
+
+        const XMLElement* materialsElem = featureElem->FirstChildElement("Materials");
+        if (materialsElem == nullptr)
+            return true;
+
+        if (KH_DisneyBRDF* disney = dynamic_cast<KH_DisneyBRDF*>(feature))
+        {
+            for (const XMLElement* materialElem = materialsElem->FirstChildElement("Material");
+                materialElem != nullptr;
+                materialElem = materialElem->NextSiblingElement("Material"))
+            {
+                disney->AddMaterial(ReadDisneyMaterial(materialElem));
+            }
+            return true;
+        }
+
+        if (KH_BSSRDF* bssrdf = dynamic_cast<KH_BSSRDF*>(feature))
+        {
+            for (const XMLElement* materialElem = materialsElem->FirstChildElement("Material");
+                materialElem != nullptr;
+                materialElem = materialElem->NextSiblingElement("Material"))
+            {
+                bssrdf->AddMaterial(ReadBSSRDFMaterial(materialElem));
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    bool ReadShaderFeatures(const XMLElement* root, KH_SceneBase& scene)
+    {
+        const XMLElement* featuresElem = root->FirstChildElement("ShaderFeatures");
+        if (featuresElem == nullptr)
+            return true;
+
+        for (const XMLElement* featureElem = featuresElem->FirstChildElement("ShaderFeature");
+            featureElem != nullptr;
+            featureElem = featureElem->NextSiblingElement("ShaderFeature"))
+        {
+            if (!ReadShaderFeature(featureElem, scene))
+                return false;
+        }
+
+        return true;
+    }
+
+    void WriteMeshMaterialSlots(XMLDocument& doc, XMLElement* modelElem, const KH_Model& model)
     {
         XMLElement* slotsElem = doc.NewElement("MeshMaterialSlots");
 
         const auto& meshes = model.GetMeshes();
         for (int meshID = 0; meshID < static_cast<int>(meshes.size()); ++meshID)
         {
-            XMLElement* slotElem = doc.NewElement("MeshMaterialSlot");
-            slotElem->SetAttribute("meshID", meshID);
-            slotElem->SetAttribute("material", meshes[meshID].GetMaterialSlotID());
-            slotsElem->InsertEndChild(slotElem);
+            XMLElement* meshSlotElem = doc.NewElement("MeshMaterialSlot");
+            meshSlotElem->SetAttribute("meshID", meshID);
+
+            for (size_t i = 0; i < KH_ShaderFeatureTypeCount; ++i)
+            {
+                const KH_ShaderFeatureType type = static_cast<KH_ShaderFeatureType>(i);
+
+                XMLElement* slotElem = doc.NewElement("Slot");
+                slotElem->SetAttribute("feature", ShaderFeatureTypeToString(type));
+                slotElem->SetAttribute("material", meshes[meshID].GetMaterialSlotID(type));
+                meshSlotElem->InsertEndChild(slotElem);
+            }
+
+            slotsElem->InsertEndChild(meshSlotElem);
         }
 
         modelElem->InsertEndChild(slotsElem);
     }
 
-    void ReadMeshMaterialSlots(const XMLElement* modelElem, KH_Model& model)
+    bool ReadMeshMaterialSlots(const XMLElement* modelElem, KH_Model& model, KH_SceneBase& scene)
     {
         const XMLElement* slotsElem = modelElem->FirstChildElement("MeshMaterialSlots");
         if (slotsElem == nullptr)
-            return;
+            return true;
 
-        for (const XMLElement* slotElem = slotsElem->FirstChildElement("MeshMaterialSlot");
-            slotElem != nullptr;
-            slotElem = slotElem->NextSiblingElement("MeshMaterialSlot"))
+        for (const XMLElement* meshSlotElem = slotsElem->FirstChildElement("MeshMaterialSlot");
+            meshSlotElem != nullptr;
+            meshSlotElem = meshSlotElem->NextSiblingElement("MeshMaterialSlot"))
         {
-            const int meshID = slotElem->IntAttribute("meshID", -1);
-            const int materialSlotID = slotElem->IntAttribute("material", KH_MATERIAL_UNDEFINED_SLOT);
-            model.SetMeshMaterialSlotID(materialSlotID, meshID);
+            const int meshID = meshSlotElem->IntAttribute("meshID", -1);
+            if (meshID < 0)
+                continue;
+
+            for (const XMLElement* slotElem = meshSlotElem->FirstChildElement("Slot");
+                slotElem != nullptr;
+                slotElem = slotElem->NextSiblingElement("Slot"))
+            {
+                KH_ShaderFeatureType type = KH_ShaderFeatureType::DisneyBRDF;
+                if (!StringToShaderFeatureType(slotElem->Attribute("feature"), type))
+                    return false;
+
+                if (!EnsureShaderFeatureExists(scene, type))
+                    return false;
+
+                const int materialSlotID = slotElem->IntAttribute("material", KH_MATERIAL_UNDEFINED_SLOT);
+                model.SetMeshMaterialSlotID(type, materialSlotID, meshID);
+            }
         }
+
+        return true;
     }
 
-    void WriteInlineMeshes(XMLDocument& doc, XMLElement* modelElem, KH_Model& model)
+    void WriteInlineMeshes(XMLDocument& doc, XMLElement* modelElem, const KH_Model& model)
     {
         XMLElement* meshesElem = doc.NewElement("Meshes");
 
@@ -307,12 +539,12 @@ namespace
         if (!StringToBuiltinType(modelElem->Attribute("builtinType"), builtinType))
             return false;
 
-        float size = modelElem->FloatAttribute("size", 1.0f);
+        const float size = modelElem->FloatAttribute("size", 1.0f);
         outModel = KH_Model::CreateBuiltin(builtinType, size);
         return true;
     }
 
-    void WriteModel(XMLDocument& doc, XMLElement* objectsElem, KH_Model& model)
+    void WriteModel(XMLDocument& doc, XMLElement* objectsElem, const KH_Model& model)
     {
         XMLElement* modelElem = doc.NewElement("Model");
 
@@ -324,13 +556,13 @@ namespace
             break;
 
         case KH_ModelSourceType::Builtin:
+        {
+            const std::string builtinTypeName = std::string(magic_enum::enum_name(model.GetBuiltinType()));
             modelElem->SetAttribute("sourceType", "Builtin");
-            modelElem->SetAttribute(
-                "builtinType",
-                std::string(magic_enum::enum_name(model.GetBuiltinType())).c_str()
-            );
+            modelElem->SetAttribute("builtinType", builtinTypeName.c_str());
             modelElem->SetAttribute("size", model.GetBuiltinSize());
             break;
+        }
 
         case KH_ModelSourceType::Inline:
             modelElem->SetAttribute("sourceType", "Inline");
@@ -391,20 +623,11 @@ namespace
         }
 
         ReadTransform(modelElem->FirstChildElement("Transform"), *createdModel);
-        ReadMeshMaterialSlots(modelElem, *createdModel);
+
+        if (!ReadMeshMaterialSlots(modelElem, *createdModel, scene))
+            return false;
 
         return true;
-    }
-
-    void WriteMaterials(XMLDocument& doc, XMLElement* root, const KH_SceneBase& scene)
-    {
-        XMLElement* materialsElem = doc.NewElement("Materials");
-        root->InsertEndChild(materialsElem);
-
-        for (int i = 0; i < static_cast<int>(scene.Materials.size()); ++i)
-        {
-            WriteMaterial(doc, materialsElem, scene.Materials[i], i);
-        }
     }
 
     void WriteObjects(XMLDocument& doc, XMLElement* root, const KH_SceneBase& scene)
@@ -414,28 +637,12 @@ namespace
 
         for (const auto& sceneObject : scene.GetObjects())
         {
-            KH_Model* model = dynamic_cast<KH_Model*>(sceneObject.get());
+            const KH_Model* model = dynamic_cast<const KH_Model*>(sceneObject.get());
             if (model == nullptr)
                 continue;
 
             WriteModel(doc, objectsElem, *model);
         }
-    }
-
-    bool ReadMaterials(const XMLElement* root, KH_SceneBase& scene)
-    {
-        const XMLElement* materialsElem = root->FirstChildElement("Materials");
-        if (materialsElem == nullptr)
-            return true;
-
-        for (const XMLElement* materialElem = materialsElem->FirstChildElement("Material");
-            materialElem != nullptr;
-            materialElem = materialElem->NextSiblingElement("Material"))
-        {
-            scene.Materials.push_back(ReadMaterial(materialElem));
-        }
-
-        return true;
     }
 
     bool ReadObjects(const XMLElement* root, KH_SceneBase& scene)
@@ -469,14 +676,16 @@ namespace KH_SceneXmlSerializer
     {
         tinyxml2::XMLDocument doc;
 
-        tinyxml2::XMLDeclaration* decl = doc.NewDeclaration(R"(xml version="1.0" encoding="UTF-8")");
+        tinyxml2::XMLDeclaration* decl =
+            doc.NewDeclaration(R"(xml version="1.0" encoding="UTF-8")");
         doc.InsertFirstChild(decl);
 
         tinyxml2::XMLElement* root = doc.NewElement("Scene");
-        root->SetAttribute("version", 3);
+        root->SetAttribute("version", 4);
         doc.InsertEndChild(root);
 
-        WriteMaterials(doc, root, scene);
+        WriteSceneSettings(doc, root, scene);
+        WriteShaderFeatures(doc, root, scene);
         WriteObjects(doc, root, scene);
 
         return doc.SaveFile(filePath.c_str()) == tinyxml2::XML_SUCCESS;
@@ -492,13 +701,19 @@ namespace KH_SceneXmlSerializer
         if (root == nullptr)
             return false;
 
-        scene.Clear();
-        scene.Materials.clear();
+        KH_ShaderFeatureType activeType = KH_ShaderFeatureType::DisneyBRDF;
+        if (!ReadSceneSettings(root, activeType))
+            return false;
 
-        if (!ReadMaterials(root, scene))
+        scene.Clear();
+
+        if (!ReadShaderFeatures(root, scene))
             return false;
 
         if (!ReadObjects(root, scene))
+            return false;
+
+        if (!scene.SetActiveShaderFeature(activeType))
             return false;
 
         return true;

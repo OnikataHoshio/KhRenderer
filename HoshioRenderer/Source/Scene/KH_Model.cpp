@@ -45,23 +45,20 @@ void KH_Model::SetSourceAsInline()
     Directory.clear();
 }
 
-void KH_Model::SetMeshMaterialSlotID(int MaterialSlotID)
+void KH_Model::SetMeshMaterialSlotID(KH_ShaderFeatureType ShaderFeatureType, int MaterialSlotID)
 {
     for (auto& mesh : Meshes)
     {
-        mesh.MaterialSlotID = MaterialSlotID;
+        mesh.SetMaterialSlotID(ShaderFeatureType, MaterialSlotID);
     }
 }
 
-void KH_Model::SetMeshMaterialSlotID(int MaterialSlotID, int MeshID)
+void KH_Model::SetMeshMaterialSlotID(KH_ShaderFeatureType ShaderFeatureType, int MaterialSlotID, int MeshID)
 {
-    if (MaterialSlotID < 0)
-        MaterialSlotID = 0;
-
     if (MeshID < 0 || MeshID >= static_cast<int>(Meshes.size()))
         return;
 
-    Meshes[MeshID].MaterialSlotID = MaterialSlotID;
+    Meshes[MeshID].SetMaterialSlotID(ShaderFeatureType, MaterialSlotID);
 }
 
 
@@ -109,17 +106,17 @@ void KH_Model::LoadModel(const std::string& path)
 
 }
 
-KH_PickResult KH_Model::Pick(const KH_Ray& Ray) const
+KH_PickResult KH_Model::Pick(const KH_Ray& Ray, KH_ShaderFeatureType ShaderFeatureType) const
 {
     KH_PickResult best;
 
     const glm::mat4 model = GetModelMatrix();
     const glm::mat3 normal = GetNormalMatrix();
 
-    for (auto& mesh : Meshes)
+    for (const auto& mesh : Meshes)
     {
         KH_Ray localRay = Ray;
-        KH_PickResult pick = mesh.Pick(localRay, model, normal);
+        KH_PickResult pick = mesh.Pick(localRay, model, normal, ShaderFeatureType);
         if (pick.bIsHit && pick.Distance < best.Distance)
         {
             best = pick;
@@ -206,14 +203,16 @@ uint32_t KH_Model::GetPrimitiveCount() const
     return NumPrimitive;
 }
 
-void KH_Model::EncodePrimitives(std::vector<KH_PrimitiveEncoded>& outPrimitives) const
+void KH_Model::EncodePrimitives(
+    std::vector<KH_PrimitiveEncoded>& outPrimitives,
+    KH_ShaderFeatureType ShaderFeatureType) const
 {
     const glm::mat4 model = GetModelMatrix();
     const glm::mat3 normal = GetNormalMatrix();
 
     for (const auto& mesh : Meshes)
     {
-        mesh.EncodePrimitives(outPrimitives, model, normal);
+        mesh.EncodePrimitives(outPrimitives, model, normal, ShaderFeatureType);
     }
 }
 
@@ -233,7 +232,7 @@ void KH_Model::CollectPrimitiveAABBCenters(std::vector<glm::vec4>& outCenters) c
     const glm::mat4 model = GetModelMatrix();
     for (const auto& mesh : Meshes)
     {
-        mesh.CollectPrimitiveAABBCenters(outCenters, ModelMatrix);
+        mesh.CollectPrimitiveAABBCenters(outCenters, model);
     }
 }
 

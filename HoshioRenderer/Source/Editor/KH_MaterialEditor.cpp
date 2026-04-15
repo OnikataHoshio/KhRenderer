@@ -1,15 +1,63 @@
 #include "KH_MaterialEditor.h"
 #include "KH_Editor.h"
 
+namespace
+{
+    const char* ShaderFeatureDisplayName(KH_ShaderFeatureType type)
+    {
+        switch (type)
+        {
+        case KH_ShaderFeatureType::DisneyBRDF: return "Disney BRDF";
+        case KH_ShaderFeatureType::BSSRDF:     return "BSSRDF";
+        default:                               return "Unknown";
+        }
+    }
+}
+
 void KH_MaterialEditor::Render()
 {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 8));
-    ImGui::Begin("Materials");
+    ImGui::Begin("Feature Materials");
 
     SyncSelectedMaterialFromEditorSelection();
 
     KH_Editor& Editor = KH_Editor::Instance();
     KH_GpuLBVHScene& Scene = Editor.Scene;
+
+    KH_ShaderFeatureBase* ActiveFeature = Scene.GetActiveShaderFeature();
+    const KH_ShaderFeatureType ActiveType = Scene.GetActiveShaderFeatureType();
+
+    ImGui::TextDisabled("Active Shader Feature: %s", ShaderFeatureDisplayName(ActiveType));
+    ImGui::Separator();
+
+    if (ActiveFeature == nullptr)
+    {
+        ImGui::TextDisabled("No active shader feature");
+    }
+    else if (auto* Disney = Scene.GetShaderFeatureAs<KH_DisneyBRDF>(ActiveType))
+    {
+        RenderDisneyBRDFEditor(*Disney, Editor);
+    }
+    else if (auto* BSSRDF = Scene.GetShaderFeatureAs<KH_BSSRDF>(ActiveType))
+    {
+        RenderBSSRDFEditor(*BSSRDF, Editor);
+    }
+    else
+    {
+        ImGui::TextDisabled("No material editor available for this shader feature");
+    }
+
+    bIsFocused = ImGui::IsWindowFocused();
+    bIsHovered = ImGui::IsWindowHovered();
+
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
+void KH_MaterialEditor::RenderDisneyBRDFEditor(KH_DisneyBRDF& Feature, KH_Editor& Editor)
+{
+    KH_GpuLBVHScene& Scene = Editor.Scene;
+    auto& Materials = Feature.GetMaterials();
 
     if (ImGui::Button("New Material"))
     {
@@ -29,33 +77,26 @@ void KH_MaterialEditor::Render()
         mat.IOR = 1.5f;
         mat.Transmission = 0.0f;
 
-        SelectedMaterialID = Scene.AddMaterial(mat);
+        SelectedMaterialID = Feature.AddMaterial(mat);
         Scene.UpdateMaterialSSBO();
         Editor.RequestFrameReset();
     }
 
     ImGui::SameLine();
 
-    bool canDelete = !Scene.Materials.empty() &&
+    const bool canDelete =
         SelectedMaterialID >= 0 &&
-        SelectedMaterialID < static_cast<int>(Scene.Materials.size());
+        SelectedMaterialID < static_cast<int>(Materials.size());
 
     ImGui::BeginDisabled(!canDelete);
     if (ImGui::Button("Delete Material"))
     {
-        if (Scene.DeleteMaterial(SelectedMaterialID))
+        if (Scene.DeleteMaterial(Scene.GetActiveShaderFeatureType(), SelectedMaterialID))
         {
-            if (Scene.Materials.empty())
-                SelectedMaterialID = -1;
-            else
-                SelectedMaterialID = std::clamp(
-                    SelectedMaterialID,
-                    0,
-                    static_cast<int>(Scene.Materials.size()) - 1
-                );
+            const int count = Feature.GetMaterialCount();
+            SelectedMaterialID = (count <= 0) ? -1 : std::clamp(SelectedMaterialID, 0, count - 1);
 
-            // 删除材质后，Primitive 的 MaterialSlotID 映射也变了，所以要整体重建
-            Editor.RequestSceneRebuild();
+            Scene.UpdatePrimitiveSSBO();
             Editor.RequestFrameReset();
         }
     }
@@ -63,80 +104,178 @@ void KH_MaterialEditor::Render()
 
     ImGui::Separator();
 
-    if (Scene.Materials.empty())
+    if (Materials.empty())
     {
         ImGui::TextDisabled("No materials");
+        return;
     }
-    else
+
+    SelectedMaterialID = std::clamp(
+        SelectedMaterialID < 0 ? 0 : SelectedMaterialID,
+        0,
+        static_cast<int>(Materials.size()) - 1
+    );
+
+    std::vector<std::string> labels;
+    std::vector<const char*> items;
+    labels.reserve(Materials.size());
+    items.reserve(Materials.size());
+
+    for (int i = 0; i < static_cast<int>(Materials.size()); ++i)
     {
-        SelectedMaterialID = std::clamp(
-            SelectedMaterialID,
-            0,
-            static_cast<int>(Scene.Materials.size()) - 1
-        );
+        labels.push_back("Material " + std::to_string(i));
+    }
 
-        std::vector<std::string> labels;
-        labels.reserve(Scene.Materials.size());
-        std::vector<const char*> items;
-        items.reserve(Scene.Materials.size());
+    for (auto& s : labels)
+    {
+        items.push_back(s.c_str());
+    }
 
-        for (int i = 0; i < static_cast<int>(Scene.Materials.size()); ++i)
+    ImGui::Text("Selected Material");
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::Combo("##MaterialSelect", &SelectedMaterialID, items.data(), static_cast<int>(items.size()));
+
+    ImGui::Separator();
+
+    KH_BRDFMaterial& Mat = Materials[SelectedMaterialID];
+    bool materialChanged = false;
+
+    materialChanged |= ImGui::ColorEdit3(
+        "BaseColor",
+        &Mat.BaseColor.x,
+        ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
+    );
+
+    materialChanged |= ImGui::ColorEdit3(
+        "Emissive",
+        &Mat.Emissive.x,
+        ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
+    );
+
+    materialChanged |= ImGui::DragFloat("Subsurface", &Mat.Subsurface, 0.01f, 0.0f, 1.0f);
+    materialChanged |= ImGui::DragFloat("Metallic", &Mat.Metallic, 0.01f, 0.0f, 1.0f);
+    materialChanged |= ImGui::DragFloat("Specular", &Mat.Specular, 0.01f, 0.0f, 1.0f);
+    materialChanged |= ImGui::DragFloat("SpecularTint", &Mat.SpecularTint, 0.01f, 0.0f, 1.0f);
+
+    materialChanged |= ImGui::DragFloat("Roughness", &Mat.Roughness, 0.01f, 0.0f, 1.0f);
+    materialChanged |= ImGui::DragFloat("Anisotropic", &Mat.Anisotropic, 0.01f, 0.0f, 1.0f);
+    materialChanged |= ImGui::DragFloat("Sheen", &Mat.Sheen, 0.01f, 0.0f, 1.0f);
+    materialChanged |= ImGui::DragFloat("SheenTint", &Mat.SheenTint, 0.01f, 0.0f, 1.0f);
+
+    materialChanged |= ImGui::DragFloat("Clearcoat", &Mat.Clearcoat, 0.01f, 0.0f, 1.0f);
+    materialChanged |= ImGui::DragFloat("ClearcoatGloss", &Mat.ClearcoatGloss, 0.01f, 0.0f, 1.0f);
+    materialChanged |= ImGui::DragFloat("IOR", &Mat.IOR, 0.01f, 1.0f, 3.0f);
+    materialChanged |= ImGui::DragFloat("Transmission", &Mat.Transmission, 0.01f, 0.0f, 1.0f);
+
+    if (materialChanged)
+    {
+        Scene.UpdateMaterialSSBO();
+        Editor.RequestFrameReset();
+    }
+}
+
+void KH_MaterialEditor::RenderBSSRDFEditor(KH_BSSRDF& Feature, KH_Editor& Editor)
+{
+    KH_GpuLBVHScene& Scene = Editor.Scene;
+    auto& Materials = Feature.GetMaterials();
+
+    if (ImGui::Button("New Material"))
+    {
+        KH_BSSRDFMaterial mat{};
+        mat.Emissive = glm::vec3(0.0f);
+        mat.BaseColor = glm::vec3(0.8f);
+        mat.Radius = glm::vec3(1.0f, 0.2f, 0.1f);
+        mat.Eta = 1.3f;
+        mat.Scale = 0.05f;
+        
+        SelectedMaterialID = Feature.AddMaterial(mat);
+        Scene.UpdateMaterialSSBO();
+        Editor.RequestFrameReset();
+    }
+
+    ImGui::SameLine();
+
+    const bool canDelete =
+        SelectedMaterialID >= 0 &&
+        SelectedMaterialID < static_cast<int>(Materials.size());
+
+    ImGui::BeginDisabled(!canDelete);
+    if (ImGui::Button("Delete Material"))
+    {
+        if (Scene.DeleteMaterial(Scene.GetActiveShaderFeatureType(), SelectedMaterialID))
         {
-            labels.push_back("Material " + std::to_string(i));
-        }
-        for (auto& s : labels)
-        {
-            items.push_back(s.c_str());
-        }
+            const int count = Feature.GetMaterialCount();
+            SelectedMaterialID = (count <= 0) ? -1 : std::clamp(SelectedMaterialID, 0, count - 1);
 
-        ImGui::Text("Selected Material");
-        ImGui::SetNextItemWidth(-1.0f);
-        ImGui::Combo("##MaterialSelect", &SelectedMaterialID, items.data(), static_cast<int>(items.size()));
-
-        ImGui::Separator();
-
-        KH_BRDFMaterial& Mat = Scene.Materials[SelectedMaterialID];
-        bool materialChanged = false;
-
-        materialChanged |= ImGui::ColorEdit3(
-            "BaseColor",
-            &Mat.BaseColor.x,
-            ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
-        );
-
-        materialChanged |= ImGui::ColorEdit3(
-            "Emissive",
-            &Mat.Emissive.x,
-            ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
-        );
-
-        materialChanged |= ImGui::DragFloat("Subsurface", &Mat.Subsurface, 0.01f, 0.0f, 1.0f);
-        materialChanged |= ImGui::DragFloat("Metallic", &Mat.Metallic, 0.01f, 0.0f, 1.0f);
-        materialChanged |= ImGui::DragFloat("Specular", &Mat.Specular, 0.01f, 0.0f, 1.0f);
-        materialChanged |= ImGui::DragFloat("SpecularTint", &Mat.SpecularTint, 0.01f, 0.0f, 1.0f);
-
-        materialChanged |= ImGui::DragFloat("Roughness", &Mat.Roughness, 0.01f, 0.0f, 1.0f);
-        materialChanged |= ImGui::DragFloat("Anisotropic", &Mat.Anisotropic, 0.01f, 0.0f, 1.0f);
-        materialChanged |= ImGui::DragFloat("Sheen", &Mat.Sheen, 0.01f, 0.0f, 1.0f);
-        materialChanged |= ImGui::DragFloat("SheenTint", &Mat.SheenTint, 0.01f, 0.0f, 1.0f);
-
-        materialChanged |= ImGui::DragFloat("Clearcoat", &Mat.Clearcoat, 0.01f, 0.0f, 1.0f);
-        materialChanged |= ImGui::DragFloat("ClearcoatGloss", &Mat.ClearcoatGloss, 0.01f, 0.0f, 1.0f);
-        materialChanged |= ImGui::DragFloat("IOR", &Mat.IOR, 0.01f, 1.0f, 3.0f);
-        materialChanged |= ImGui::DragFloat("Transmission", &Mat.Transmission, 0.01f, 0.0f, 1.0f);
-
-        if (materialChanged)
-        {
-            Scene.UpdateMaterialSSBO();
+            Scene.UpdatePrimitiveSSBO();
             Editor.RequestFrameReset();
         }
     }
+    ImGui::EndDisabled();
 
-    bIsFocused = ImGui::IsWindowFocused();
-    bIsHovered = ImGui::IsWindowHovered();
+    ImGui::Separator();
 
-    ImGui::End();
-    ImGui::PopStyleVar();
+    if (Materials.empty())
+    {
+        ImGui::TextDisabled("No materials");
+        return;
+    }
+
+    SelectedMaterialID = std::clamp(
+        SelectedMaterialID < 0 ? 0 : SelectedMaterialID,
+        0,
+        static_cast<int>(Materials.size()) - 1
+    );
+
+    std::vector<std::string> labels;
+    std::vector<const char*> items;
+    labels.reserve(Materials.size());
+    items.reserve(Materials.size());
+
+    for (int i = 0; i < static_cast<int>(Materials.size()); ++i)
+    {
+        labels.push_back("Material " + std::to_string(i));
+    }
+
+    for (auto& s : labels)
+    {
+        items.push_back(s.c_str());
+    }
+
+    ImGui::Text("Selected Material");
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::Combo("##MaterialSelect", &SelectedMaterialID, items.data(), static_cast<int>(items.size()));
+
+    ImGui::Separator();
+
+    KH_BSSRDFMaterial& Mat = Materials[SelectedMaterialID];
+    bool materialChanged = false;
+
+
+    materialChanged |= ImGui::ColorEdit3(
+        "Emissive",
+        &Mat.Emissive.x,
+        ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
+    );
+
+    materialChanged |= ImGui::ColorEdit3(
+        "BaseColor",
+        &Mat.BaseColor.x,
+        ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR
+    );
+
+    materialChanged |= ImGui::DragFloat("Scale", &Mat.Scale, 0.001f, 0.0f, 1000.0f);
+
+    materialChanged |= ImGui::DragFloat3("Radius", &Mat.Radius.x, 0.001f, 0.0f, 100.0f);
+
+    materialChanged |= ImGui::DragFloat("Eta", &Mat.Eta, 0.001f, 1.0f, 3.0f);
+
+
+    if (materialChanged)
+    {
+        Scene.UpdateMaterialSSBO();
+        Editor.RequestFrameReset();
+    }
 }
 
 void KH_MaterialEditor::SyncSelectedMaterialFromEditorSelection()
@@ -146,19 +285,32 @@ void KH_MaterialEditor::SyncSelectedMaterialFromEditorSelection()
 
     const int objectID = Editor.GetSelectedObjectID();
     const int meshID = Editor.GetSelectedObjectMeshID();
+    const KH_ShaderFeatureType activeType = Scene.GetActiveShaderFeatureType();
+    const int activeTypeInt = static_cast<int>(activeType);
 
-    // 只有当选中的 object / mesh 真的变了，才同步一次
-    if (objectID == LastSyncedObjectID && meshID == LastSyncedMeshID)
+    if (objectID == LastSyncedObjectID &&
+        meshID == LastSyncedMeshID &&
+        activeTypeInt == LastSyncedFeatureType)
+    {
         return;
+    }
 
     LastSyncedObjectID = objectID;
     LastSyncedMeshID = meshID;
+    LastSyncedFeatureType = activeTypeInt;
 
-    if (Scene.Materials.empty())
+    KH_ShaderFeatureBase* ActiveFeature = Scene.GetActiveShaderFeature();
+    const int MaterialCount = ActiveFeature ? ActiveFeature->GetMaterialCount() : 0;
+    if (MaterialCount <= 0)
     {
         SelectedMaterialID = -1;
         return;
     }
+
+    if (SelectedMaterialID < 0)
+        SelectedMaterialID = 0;
+
+    SelectedMaterialID = std::clamp(SelectedMaterialID, 0, MaterialCount - 1);
 
     auto& objects = Scene.GetObjects();
     if (objectID < 0 || objectID >= static_cast<int>(objects.size()))
@@ -174,8 +326,8 @@ void KH_MaterialEditor::SyncSelectedMaterialFromEditorSelection()
         return;
 
     SelectedMaterialID = std::clamp(
-        meshes[meshID].GetMaterialSlotID(),
+        meshes[meshID].GetMaterialSlotID(activeType),
         0,
-        static_cast<int>(Scene.Materials.size()) - 1
+        MaterialCount - 1
     );
 }

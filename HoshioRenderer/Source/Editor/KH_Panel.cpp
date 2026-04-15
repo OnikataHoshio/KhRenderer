@@ -3,6 +3,18 @@
 #include "Scene/KH_Scene.h"
 #include "Utils/KH_DebugUtils.h"
 
+namespace
+{
+    const char* ShaderFeatureDisplayName(KH_ShaderFeatureType type)
+    {
+        switch (type)
+        {
+        case KH_ShaderFeatureType::DisneyBRDF: return "Disney BRDF";
+        case KH_ShaderFeatureType::BSSRDF:     return "BSSRDF";
+        default:                               return "Unknown";
+        }
+    }
+}
 
 
 std::vector<KH_LOG_MESSAGE> KH_Console::LogMessages;
@@ -169,10 +181,16 @@ void KH_SceneTree::Render()
     const int selectedModelID = Editor.GetSelectedObjectID();
     const int selectedMeshID = Editor.GetSelectedObjectMeshID();
 
+    KH_ShaderFeatureBase* ActiveFeature = Editor.Scene.GetActiveShaderFeature();
+    const KH_ShaderFeatureType ActiveType = Editor.Scene.GetActiveShaderFeatureType();
+    const int ActiveMaterialCount = ActiveFeature ? ActiveFeature->GetMaterialCount() : 0;
+
     ImGui::Indent(10.0f);
     ImGui::Text("Models: %d", static_cast<int>(objects.size()));
     ImGui::SameLine();
-    ImGui::TextDisabled("| Materials: %d", static_cast<int>(Editor.Scene.Materials.size()));
+    ImGui::TextDisabled("| Active: %s", ShaderFeatureDisplayName(ActiveType));
+    ImGui::SameLine();
+    ImGui::TextDisabled("| Materials: %d", ActiveMaterialCount);
     ImGui::Unindent(10.0f);
 
     ImGui::Separator();
@@ -192,10 +210,9 @@ void KH_SceneTree::Render()
                 continue;
 
             const auto& meshes = model->GetMeshes();
-            const bool isModelSelected = (selectedModelID == modelID && selectedMeshID == 0);
+            const bool isModelSelected = (selectedModelID == modelID && selectedMeshID < 0);
             const bool isThisModelActive = (selectedModelID == modelID);
 
-            // 当前选中的 Model 始终展开
             ImGui::SetNextItemOpen(isThisModelActive, ImGuiCond_Always);
 
             ImGuiTreeNodeFlags flags =
@@ -216,10 +233,9 @@ void KH_SceneTree::Render()
 
             bool open = ImGui::TreeNodeEx((void*)(intptr_t)modelID, flags, "%s", modelLabel);
 
-            // 点击 Model：选中该 Model，并把 MeshID 设为 0
             if (ImGui::IsItemClicked())
             {
-                Editor.SetSelectedObjectID(modelID, 0);
+                Editor.SetSelectedObjectID(modelID, -1);
             }
 
             if (open)
@@ -231,12 +247,7 @@ void KH_SceneTree::Render()
                         (selectedModelID == modelID && selectedMeshID == meshID);
 
                     char meshLabel[128];
-                    std::snprintf(
-                        meshLabel,
-                        sizeof(meshLabel),
-                        "Mesh [%d]",
-                        meshID
-                    );
+                    std::snprintf(meshLabel, sizeof(meshLabel), "Mesh [%d]", meshID);
 
                     if (ImGui::Selectable(meshLabel, isMeshSelected))
                     {
@@ -256,15 +267,74 @@ void KH_SceneTree::Render()
     ImGui::PopStyleVar();
 }
 
-void KH_ShaderFeatures::Render()
+void KH_RenderPipeline::Render()
 {
     KH_Editor& Editor = KH_Editor::Instance();
+    KH_GpuLBVHScene& Scene = Editor.Scene;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    ImGui::Begin("ShaderSetting");
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 8));
+    ImGui::Begin("Render Pipeline");
 
-    
-    Editor.Scene.GetShaderFeature().DrawControlPanel();
+    std::vector<KH_ShaderFeatureType> AvailableTypes;
+    std::vector<std::string> Labels;
+    std::vector<const char*> Items;
+
+    int CurrentIndex = 0;
+
+    for (size_t i = 0; i < KH_ShaderFeatureTypeCount; ++i)
+    {
+        KH_ShaderFeatureType type = static_cast<KH_ShaderFeatureType>(i);
+        if (Scene.GetShaderFeature(type) == nullptr)
+            continue;
+
+        if (type == Scene.GetActiveShaderFeatureType())
+        {
+            CurrentIndex = static_cast<int>(AvailableTypes.size());
+        }
+
+        AvailableTypes.push_back(type);
+        Labels.push_back(ShaderFeatureDisplayName(type));
+    }
+
+    for (auto& label : Labels)
+    {
+        Items.push_back(label.c_str());
+    }
+
+    if (AvailableTypes.empty())
+    {
+        ImGui::TextDisabled("No shader features registered");
+    }
+    else
+    {
+        ImGui::SeparatorText("Shading");
+
+        ImGui::TextDisabled("Choose which shader feature drives rendering and material binding.");
+
+        ImGui::PushItemWidth(ImGui::CalcTextSize("Active Shader Feature").x + 20);
+
+        if (ImGui::Combo("Active Shader Feature", &CurrentIndex, Items.data(), static_cast<int>(Items.size())))
+        {
+            const KH_ShaderFeatureType NewType = AvailableTypes[CurrentIndex];
+            if (Scene.SetActiveShaderFeature(NewType))
+            {
+                Scene.UpdatePrimitiveSSBO();
+                Scene.UpdateMaterialSSBO();
+                Editor.RequestFrameReset();
+            }
+        }
+
+        ImGui::PopItemWidth();
+
+        ImGui::Separator();
+
+        if (KH_ShaderFeatureBase* ActiveFeature = Scene.GetActiveShaderFeature())
+        {
+            ImGui::TextDisabled("Parameters: %s", ShaderFeatureDisplayName(Scene.GetActiveShaderFeatureType()));
+            ImGui::Spacing();
+            ActiveFeature->DrawControlPanel();
+        }
+    }
 
     bIsFocused = ImGui::IsWindowFocused();
     bIsHovered = ImGui::IsWindowHovered();
@@ -272,5 +342,3 @@ void KH_ShaderFeatures::Render()
     ImGui::End();
     ImGui::PopStyleVar();
 }
-
-

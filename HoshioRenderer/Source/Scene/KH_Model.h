@@ -36,11 +36,15 @@ public:
     static KH_Model CreateBuiltin(KH_BuiltinModelType type, float size = 1.0f);
 
     KH_HitResult Hit(const KH_Ray& Ray) const override;
-    virtual KH_PickResult Pick(const KH_Ray& Ray) const;
+    virtual KH_PickResult Pick(
+        const KH_Ray& Ray,
+        KH_ShaderFeatureType ShaderFeatureType = KH_ShaderFeatureType::DisneyBRDF) const;
 
     void AddMesh(KH_Mesh&& mesh);
     virtual uint32_t GetPrimitiveCount() const override;
-    virtual void EncodePrimitives(std::vector<KH_PrimitiveEncoded>& outPrimitives) const override;
+    virtual void EncodePrimitives(
+        std::vector<KH_PrimitiveEncoded>& outPrimitives,
+        KH_ShaderFeatureType ShaderFeatureType = KH_ShaderFeatureType::DisneyBRDF) const override;
     virtual void CollectPrimitives(std::vector<KH_ScenePrimitive>& outPrimitives) const override;
     virtual void CollectPrimitiveAABBCenters(std::vector<glm::vec4>& outCenters) const override;
     virtual const KH_AABB& GetAABB() const override;
@@ -49,11 +53,14 @@ public:
     KH_BuiltinModelType GetBuiltinType() const { return BuiltinType; }
     float GetBuiltinSize() const { return BuiltinSize; }
     const std::string& GetSourcePath() const { return SourcePath; }
+
     std::vector<KH_Mesh>& GetMeshes() { return Meshes; }
+    const std::vector<KH_Mesh>& GetMeshes() const { return Meshes; }
 
     void SetSourceAsInline();
-    void SetMeshMaterialSlotID(int MaterialSlotID = 0);
-    void SetMeshMaterialSlotID(int MaterialSlotID, int MeshID);
+
+    void SetMeshMaterialSlotID(KH_ShaderFeatureType ShaderFeatureType, int MaterialSlotID = KH_MATERIAL_UNDEFINED_SLOT);
+    void SetMeshMaterialSlotID(KH_ShaderFeatureType ShaderFeatureType, int MaterialSlotID, int MeshID);
 
     void Render(KH_Shader& Shader);
 
@@ -73,7 +80,6 @@ private:
     void UpdateAABB() override;
     void UpdateGizmoPivotLocal();
     void OnTransformChanged() override;
-
 };
 
 class KH_PrimitiveFactory

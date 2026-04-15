@@ -19,13 +19,14 @@ KH_Mesh::KH_Mesh(KH_Mesh&& other) noexcept
     VBO(other.VBO),
     EBO(other.EBO),
     DrawMode(other.DrawMode),
-	LocalAABB(other.LocalAABB)
+    LocalAABB(other.LocalAABB),
+    MaterialSlotIDs(other.MaterialSlotIDs),
+    LocalMeshID(other.LocalMeshID)
 {
     other.VAO = 0;
     other.VBO = 0;
     other.EBO = 0;
 }
-
 
 KH_Mesh& KH_Mesh::operator=(KH_Mesh&& other) noexcept
 {
@@ -44,6 +45,8 @@ KH_Mesh& KH_Mesh::operator=(KH_Mesh&& other) noexcept
         EBO = other.EBO;
         DrawMode = other.DrawMode;
         LocalAABB = other.LocalAABB;
+        MaterialSlotIDs = other.MaterialSlotIDs;
+        LocalMeshID = other.LocalMeshID;
 
         other.VAO = 0;
         other.VBO = 0;
@@ -124,11 +127,16 @@ uint32_t KH_Mesh::GetPrimitiveCount() const
 	}
 }
 
-void KH_Mesh::EncodePrimitives(std::vector<KH_PrimitiveEncoded>& outPrimitives,
-	const glm::mat4& ModelMatrix, const glm::mat3& NormalMatrix) const
+void KH_Mesh::EncodePrimitives(
+    std::vector<KH_PrimitiveEncoded>& outPrimitives,
+    const glm::mat4& ModelMatrix,
+    const glm::mat3& NormalMatrix,
+    KH_ShaderFeatureType ShaderFeatureType) const
 {
     if (DrawMode != GL_TRIANGLES)
         return;
+
+    const int MaterialSlotID = GetMaterialSlotID(ShaderFeatureType);
 
     for (size_t i = 0; i + 2 < Indices.size(); i += 3)
     {
@@ -160,8 +168,10 @@ void KH_Mesh::EncodePrimitives(std::vector<KH_PrimitiveEncoded>& outPrimitives,
     }
 }
 
-void KH_Mesh::CollectPrimitives(std::vector<KH_ScenePrimitive>& outPrimitives,
-	const glm::mat4& ModelMatrix, const glm::mat3& NormalMatrix) const
+void KH_Mesh::CollectPrimitives(
+    std::vector<KH_ScenePrimitive>& outPrimitives,
+    const glm::mat4& ModelMatrix,
+    const glm::mat3& NormalMatrix) const
 {
     if (DrawMode != GL_TRIANGLES)
         return;
@@ -182,11 +192,14 @@ void KH_Mesh::CollectPrimitives(std::vector<KH_ScenePrimitive>& outPrimitives,
 
         auto primitive = std::make_unique<KH_Triangle>(p0, p1, p2, n0, n1, n2);
         primitive->PrimitiveType = KH_PrimitiveType::Triangle;
-        primitive->MaterialSlotID = MaterialSlotID;
 
-        outPrimitives.emplace_back(KH_ScenePrimitive{
-            std::move(primitive)
-            });
+        for (size_t FeatureIndex = 0; FeatureIndex < KH_ShaderFeatureTypeCount; ++FeatureIndex)
+        {
+            const KH_ShaderFeatureType Type = static_cast<KH_ShaderFeatureType>(FeatureIndex);
+            primitive->SetMaterialSlotID(Type, GetMaterialSlotID(Type));
+        }
+
+        outPrimitives.emplace_back(std::move(primitive));
     }
 }
 
@@ -234,17 +247,21 @@ GLenum KH_Mesh::GetDrawMode() const
     return DrawMode;
 }
 
-int KH_Mesh::GetMaterialSlotID() const
+int KH_Mesh::GetMaterialSlotID(KH_ShaderFeatureType ShaderFeatureType) const
 {
-    return MaterialSlotID;
+    return MaterialSlotIDs[KH_ShaderFeatureTypeToIndex(ShaderFeatureType)];
 }
 
-void KH_Mesh::SetMaterialSlotID(int InMaterialSlotID)
+void KH_Mesh::SetMaterialSlotID(KH_ShaderFeatureType ShaderFeatureType, int InMaterialSlotID)
 {
-    MaterialSlotID = InMaterialSlotID;
+    MaterialSlotIDs[KH_ShaderFeatureTypeToIndex(ShaderFeatureType)] = InMaterialSlotID;
 }
 
-KH_PickResult KH_Mesh::Pick(const KH_Ray& Ray, const glm::mat4& ModelMatrix, const glm::mat3& NormalMatrix) const
+KH_PickResult KH_Mesh::Pick(
+    const KH_Ray& Ray,
+    const glm::mat4& ModelMatrix,
+    const glm::mat3& NormalMatrix,
+    KH_ShaderFeatureType ShaderFeatureType) const
 {
     KH_PickResult best;
 
@@ -261,7 +278,7 @@ KH_PickResult KH_Mesh::Pick(const KH_Ray& Ray, const glm::mat4& ModelMatrix, con
         {
             best.bIsHit = true;
             best.Distance = pick.Distance;
-            best.MaterialSlotID = MaterialSlotID;
+            best.MaterialSlotID = GetMaterialSlotID(ShaderFeatureType);
             best.ObjectMeshID = LocalMeshID;
             best.HitPoint = pick.HitPoint;
             best.Normal = pick.Normal;

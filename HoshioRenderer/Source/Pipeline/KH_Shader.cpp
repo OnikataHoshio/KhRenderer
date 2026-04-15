@@ -469,6 +469,11 @@ void KH_ExampleShaders::InitShaders()
     DisneyBRDF_3 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version3/DisneyBRDF_3.frag");
     DisneyBRDF_4 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version3/DisneyBRDF_4.frag");
 
+    BSSRDF_0 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version4/BSSRDF_0.frag");
+    BSSRDF_1 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version4/BSSRDF_1.frag");
+    BSSRDF_2 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version4/BSSRDF_2.frag");
+    BSSRDF_3 = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/RayTracing/Version4/BSSRDF_3.frag");
+
     GammaCorrectionShader = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/PostProcess/GammaCorrection.frag");
     DrawSobolShader = ShaderManager.LoadShader("Assert/Shaders/DefaultCanvas.vert", "Assert/Shaders/ScenePass/DrawSobol.frag");
 

@@ -66,6 +66,44 @@ namespace
         outRotation = glm::normalize(glm::quat_cast(rot));
         return true;
     }
+
+    const char* ShaderFeatureDisplayName(KH_ShaderFeatureType type)
+    {
+        switch (type)
+        {
+        case KH_ShaderFeatureType::DisneyBRDF: return "Disney BRDF";
+        case KH_ShaderFeatureType::BSSRDF:     return "BSSRDF";
+        default:                               return "Unknown";
+        }
+    }
+
+    void AddDefaultMaterialToFeature(KH_ShaderFeatureBase* feature)
+    {
+        if (feature == nullptr || feature->GetMaterialCount() > 0)
+            return;
+
+        if (auto* brdf = dynamic_cast<KH_DisneyBRDF*>(feature))
+        {
+            KH_BRDFMaterial mat{};
+            mat.BaseColor = glm::vec3(0.8f);
+            mat.Emissive = glm::vec3(0.0f);
+            mat.Specular = 0.5f;
+            mat.Roughness = 0.5f;
+            mat.IOR = 1.5f;
+            brdf->AddMaterial(mat);
+        }
+        else if (auto* bssrdf = dynamic_cast<KH_BSSRDF*>(feature))
+        {
+            KH_BSSRDFMaterial mat{};
+            mat.Emissive = glm::vec3(0.0f);
+            mat.BaseColor = glm::vec3(0.8f);
+            mat.Radius = glm::vec3(1.0f, 0.2f, 0.1f);
+            mat.Eta = 1.3f;
+            mat.Scale = 0.05f;
+            bssrdf->AddMaterial(mat);
+        }
+    }
+
 }
 
 namespace
@@ -201,7 +239,7 @@ void KH_Editor::EndRender()
     Inspector.Render();
     MaterialsEditor.Render();
     GlobalInfo.Render();
-    ShaderFeatures.Render();
+    RenderPipeline.Render();
 
     Canvas.SwapFramebuffer();
     EndImgui();
@@ -276,7 +314,10 @@ KH_Editor::~KH_Editor()
 
 void KH_Editor::Initialize()
 {
-    ImportSceneFromFile(DefaultScenePath);
+    if (DefaultScenePath.empty() || !ImportSceneFromFile(DefaultScenePath))
+    {
+        NewScene();
+    }
 }
 
 void KH_Editor::DeInitialize()
@@ -333,9 +374,10 @@ void KH_Editor::UpdateSelectedObjectID()
     {
         KH_PickResult result = Scene.Pick(pickRay);
         SelectedObjectID = result.bIsHit ? result.ObjectIndex : -1;
-        SelectedObjectMeshID = result.ObjectMeshID;
+        SelectedObjectMeshID = result.bIsHit ? result.ObjectMeshID : -1;
     }
 }
+
 
 void KH_Editor::DrawCanvasGizmos()
 {
@@ -378,10 +420,12 @@ bool KH_Editor::DeleteSelectedObject(bool OnlyDeleteModel)
         return false;
 
     SelectedObjectID = -1;
+    SelectedObjectMeshID = -1;
     RequestSceneRebuild();
     RequestFrameReset();
     return true;
 }
+
 
 bool KH_Editor::AddExternalModelFromFile(const std::string& filePath, int materialSlotID)
 {
@@ -394,6 +438,8 @@ bool KH_Editor::AddExternalModelFromFile(const std::string& filePath, int materi
     InitializeSpawnedObjectTransform(model);
 
     SelectedObjectID = static_cast<int32_t>(Scene.GetObjects().size()) - 1;
+    SelectedObjectMeshID = -1;
+
     RequestSceneRebuild();
     RequestFrameReset();
 
@@ -427,6 +473,8 @@ bool KH_Editor::AddBuiltinModel(int builtinTypeIndex, float size, int materialSl
     InitializeSpawnedObjectTransform(modelRef);
 
     SelectedObjectID = static_cast<int32_t>(Scene.GetObjects().size()) - 1;
+    SelectedObjectMeshID = -1;
+
     RequestSceneRebuild();
     RequestFrameReset();
 
@@ -572,10 +620,12 @@ bool KH_Editor::ImportSceneFromFile(const std::string& filePath)
 
     CurrentSceneXmlPath = filePath;
     SelectedObjectID = -1;
+    SelectedObjectMeshID = -1;
     RequestFrameReset();
 
     return true;
 }
+
 
 void KH_Editor::DrawViewManipulator()
 {
@@ -759,36 +809,65 @@ bool KH_Editor::SaveScene()
 void KH_Editor::NewScene()
 {
     Scene.Clear();
-    Scene.Materials.clear();
-
-    KH_BRDFMaterial defaultMat;
-    defaultMat.BaseColor = glm::vec3(0.8f);
-    Scene.Materials.push_back(defaultMat);
-
+    EnsureDefaultMaterialsForAllShaderFeatures();
     Scene.BindAndBuild();
 
     CurrentSceneXmlPath.clear();
     SelectedObjectID = -1;
+    SelectedObjectMeshID = -1;
     RequestFrameReset();
+}
+
+
+void KH_Editor::EnsureDefaultMaterialsForAllShaderFeatures()
+{
+    for (size_t i = 0; i < KH_ShaderFeatureTypeCount; ++i)
+    {
+        KH_ShaderFeatureType type = static_cast<KH_ShaderFeatureType>(i);
+        AddDefaultMaterialToFeature(Scene.GetShaderFeature(type));
+    }
+
+    Scene.UpdateMaterialSSBO();
 }
 
 int KH_Editor::EnsureUsableMaterialSlot(int requestedSlot)
 {
-    if (Scene.Materials.empty())
+    EnsureDefaultMaterialsForAllShaderFeatures();
+
+    bool bHasAnyFeature = false;
+    int maxSharedSlot = 0;
+
+    for (size_t i = 0; i < KH_ShaderFeatureTypeCount; ++i)
     {
-        KH_BRDFMaterial defaultMat;
-        defaultMat.BaseColor = glm::vec3(0.8f);
-        Scene.Materials.push_back(defaultMat);
+        KH_ShaderFeatureType type = static_cast<KH_ShaderFeatureType>(i);
+        KH_ShaderFeatureBase* feature = Scene.GetShaderFeature(type);
+        if (!feature)
+            continue;
+
+        const int count = feature->GetMaterialCount();
+        if (count <= 0)
+            continue;
+
+        if (!bHasAnyFeature)
+        {
+            maxSharedSlot = count - 1;
+            bHasAnyFeature = true;
+        }
+        else
+        {
+            maxSharedSlot = std::min(maxSharedSlot, count - 1);
+        }
     }
+
+    if (!bHasAnyFeature)
+        return KH_MATERIAL_UNDEFINED_SLOT;
 
     if (requestedSlot < 0)
         return 0;
 
-    if (requestedSlot >= static_cast<int>(Scene.Materials.size()))
-        return static_cast<int>(Scene.Materials.size()) - 1;
-
-    return requestedSlot;
+    return std::clamp(requestedSlot, 0, maxSharedSlot);
 }
+
 
 void KH_Editor::InitializeSpawnedObjectTransform(KH_Object& object)
 {

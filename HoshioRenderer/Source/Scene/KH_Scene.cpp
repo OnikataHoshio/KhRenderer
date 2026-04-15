@@ -28,38 +28,68 @@ std::vector<KH_PrimitiveEncoded> KH_SceneBase::EncodePrimitives()
     std::vector<KH_PrimitiveEncoded> Encoded;
 
     PrimitiveCount = 0;
-    for (int i = 0; i < Objects.size(); i++)
+    for (int i = 0; i < static_cast<int>(Objects.size()); i++)
     {
         PrimitiveCount += Objects[i]->GetPrimitiveCount();
     }
 
     Encoded.reserve(PrimitiveCount);
 
+    const KH_ShaderFeatureType ActiveType = GetActiveShaderFeatureType();
+
     for (const auto& sceneObject : Objects)
     {
-        sceneObject->EncodePrimitives(Encoded);
+        sceneObject->EncodePrimitives(Encoded, ActiveType);
     }
 
     return Encoded;
 }
 
-std::vector<KH_BRDFMaterialEncoded> KH_SceneBase::EncodeBRDFMaterials() const
+void KH_SceneBase::InitializeModelMaterialSlots(KH_Model& model, int defaultMaterialSlotID)
 {
-    const int nMaterials = Materials.size();
-    std::vector<KH_BRDFMaterialEncoded> BSDFMaterialEncodeds(nMaterials);
-
-    for (int i = 0; i < nMaterials; i++)
+    for (auto& mesh : model.GetMeshes())
     {
-        const KH_BRDFMaterial& Mat = Materials[i];
+        for (size_t i = 0; i < KH_ShaderFeatureTypeCount; ++i)
+        {
+            if (!ShaderFeatures[i])
+                continue;
 
-        BSDFMaterialEncodeds[i].Emissive = glm::vec4(Mat.Emissive, 1.0);
-        BSDFMaterialEncodeds[i].BaseColor = glm::vec4(Mat.BaseColor, 1.0);
-        BSDFMaterialEncodeds[i].Param1 = glm::vec4(Mat.Subsurface, Mat.Metallic, Mat.Specular, Mat.SpecularTint);
-        BSDFMaterialEncodeds[i].Param2 = glm::vec4(Mat.Roughness, Mat.Anisotropic, Mat.Sheen, Mat.SheenTint);
-        BSDFMaterialEncodeds[i].Param3 = glm::vec4(Mat.Clearcoat, Mat.ClearcoatGloss, Mat.IOR, Mat.Transmission);
+            mesh.SetMaterialSlotID(
+                static_cast<KH_ShaderFeatureType>(i),
+                defaultMaterialSlotID);
+        }
     }
+}
 
-    return BSDFMaterialEncodeds;
+void KH_SceneBase::RemapMaterialSlots(
+    KH_ShaderFeatureType type,
+    int removedMaterialID)
+{
+    KH_ShaderFeatureBase* feature = GetShaderFeature(type);
+    const int materialCount = feature ? feature->GetMaterialCount() : 0;
+    const int fallbackID = (materialCount > 0)
+        ? std::min(removedMaterialID, materialCount - 1)
+        : KH_MATERIAL_UNDEFINED_SLOT;
+
+    for (auto& sceneObject : Objects)
+    {
+        for (auto& mesh : sceneObject->GetMeshes())
+        {
+            int slot = mesh.GetMaterialSlotID(type);
+
+            if (slot == KH_MATERIAL_UNDEFINED_SLOT)
+                continue;
+
+            if (slot == removedMaterialID)
+            {
+                mesh.SetMaterialSlotID(type, fallbackID);
+            }
+            else if (slot > removedMaterialID)
+            {
+                mesh.SetMaterialSlotID(type, slot - 1);
+            }
+        }
+    }
 }
 
 std::vector<KH_SceneObject>& KH_SceneBase::GetObjects()
@@ -72,14 +102,40 @@ const std::vector<KH_SceneObject>& KH_SceneBase::GetObjects() const
     return Objects;
 }
 
-KH_DisneyBRDF& KH_SceneBase::GetShaderFeature()
+KH_ShaderFeatureBase* KH_SceneBase::GetShaderFeature(KH_ShaderFeatureType type)
 {
-    return ShaderFeature; 
+    return ShaderFeatures[KH_ShaderFeatureTypeToIndex(type)].get();
 }
 
-const KH_DisneyBRDF& KH_SceneBase::GetShaderFeature() const
+const KH_ShaderFeatureBase* KH_SceneBase::GetShaderFeature(KH_ShaderFeatureType type) const
 {
-    return ShaderFeature; 
+    return ShaderFeatures[KH_ShaderFeatureTypeToIndex(type)].get();
+}
+
+KH_ShaderFeatureBase* KH_SceneBase::GetActiveShaderFeature()
+{
+    return GetShaderFeature(ActiveShaderFeatureType);
+}
+
+const KH_ShaderFeatureBase* KH_SceneBase::GetActiveShaderFeature() const
+{
+    return GetShaderFeature(ActiveShaderFeatureType);
+}
+
+KH_ShaderFeatureType KH_SceneBase::GetActiveShaderFeatureType() const
+{
+    return ActiveShaderFeatureType;
+}
+
+bool KH_SceneBase::SetActiveShaderFeature(KH_ShaderFeatureType type)
+{
+    KH_ShaderFeatureBase* feature = GetShaderFeature(type);
+    if (!feature)
+        return false;
+
+    ActiveShaderFeatureType = type;
+    feature->UploadMaterialBuffer();
+    return true;
 }
 
 KH_Model& KH_SceneBase::AddModel(int MaterialSlotID, const std::string& Path)
@@ -87,10 +143,7 @@ KH_Model& KH_SceneBase::AddModel(int MaterialSlotID, const std::string& Path)
     auto obj = std::make_unique<KH_Model>(Path);
     KH_Model& ref = *obj;
 
-    if (MaterialSlotID != KH_MATERIAL_UNDEFINED_SLOT)
-    {
-        ref.SetMeshMaterialSlotID(MaterialSlotID);
-    }
+    InitializeModelMaterialSlots(ref, MaterialSlotID);
 
     Objects.push_back(std::move(obj));
     return ref;
@@ -101,10 +154,7 @@ KH_Model& KH_SceneBase::AddModel(int MaterialSlotID, KH_Model&& Model)
     auto obj = std::make_unique<KH_Model>(std::move(Model));
     KH_Model& ref = *obj;
 
-    if (MaterialSlotID != KH_MATERIAL_UNDEFINED_SLOT)
-    {
-        ref.SetMeshMaterialSlotID(MaterialSlotID);
-    }
+    InitializeModelMaterialSlots(ref, MaterialSlotID);
 
     Objects.push_back(std::move(obj));
     return ref;
@@ -115,49 +165,23 @@ KH_Model& KH_SceneBase::AddEmptyModel(int MaterialSlotID)
     auto obj = std::make_unique<KH_Model>();
     KH_Model& ref = *obj;
 
-    if (MaterialSlotID != KH_MATERIAL_UNDEFINED_SLOT)
-    {
-        ref.SetMeshMaterialSlotID(MaterialSlotID);
-    }
+    InitializeModelMaterialSlots(ref, MaterialSlotID);
 
     Objects.push_back(std::move(obj));
     return ref;
 }
 
-// 新增
-int KH_SceneBase::AddMaterial(const KH_BRDFMaterial& material)
+bool KH_SceneBase::DeleteMaterial(KH_ShaderFeatureType type, int materialID)
 {
-    Materials.push_back(material);
-    return static_cast<int>(Materials.size()) - 1;
-}
-
-// 新增
-bool KH_SceneBase::DeleteMaterial(int materialID)
-{
-    if (materialID < 0 || materialID >= static_cast<int>(Materials.size()))
+    KH_ShaderFeatureBase* feature = GetShaderFeature(type);
+    if (!feature)
         return false;
 
-    Materials.erase(Materials.begin() + materialID);
+    if (!feature->DeleteMaterial(materialID))
+        return false;
 
-    const int fallbackID = Materials.empty() ? KH_MATERIAL_UNDEFINED_SLOT : 0;
-
-    for (auto& sceneObject : Objects)
-    {
-        for (auto& mesh : sceneObject->GetMeshes())
-        {
-            int MeshMaterialSlotID = mesh.GetMaterialSlotID();
-            if (MeshMaterialSlotID == materialID)
-            {
-                mesh.SetMaterialSlotID(materialID);
-            }
-            else if (MeshMaterialSlotID > materialID)
-            {
-                mesh.SetMaterialSlotID(MeshMaterialSlotID - 1);
-            }
-	        
-        }
-    }
-
+    RemapMaterialSlots(type, materialID);
+    feature->UploadMaterialBuffer();
     return true;
 }
 
@@ -173,7 +197,16 @@ bool KH_SceneBase::RemoveObjectAt(size_t Index)
 void KH_SceneBase::Clear()
 {
     Objects.clear();
+    PrimitiveCount = 0;
     AABB.Reset();
+
+    for (auto& feature : ShaderFeatures)
+    {
+        if (feature)
+        {
+            feature->ClearMaterials();
+        }
+    }
 }
 
 bool KH_SceneBase::SaveToXml(const std::string& filePath) const
@@ -204,7 +237,7 @@ KH_PickResult KH_SceneBase::Pick(const KH_Ray& ray) const
         if (pick.bIsHit && pick.Distance < best.Distance)
         {
             best = pick;
-            best.ObjectIndex = i;   // 修这里，不是 ObjectMeshID
+            best.ObjectIndex = i;
         }
     }
 
@@ -214,27 +247,31 @@ KH_PickResult KH_SceneBase::Pick(const KH_Ray& ray) const
 void KH_GpuLBVHScene::SetSSBOs()
 {
     std::vector<KH_PrimitiveEncoded> PrimitiveEncodeds = EncodePrimitives();
-    std::vector<KH_BRDFMaterialEncoded> BSDFMaterialEncodeds = EncodeBRDFMaterials();
-
     Primitive_SSBO.SetData(PrimitiveEncodeds);
-    Material_SSBO.SetData(BSDFMaterialEncodeds);
+
+    for (size_t i = 0; i < KH_ShaderFeatureTypeCount; ++i)
+    {
+        if (ShaderFeatures[i])
+        {
+            ShaderFeatures[i]->UploadMaterialBuffer();
+        }
+    }
 }
 
 void KH_GpuLBVHScene::SetRayTracingParam(KH_Shader& Shader)
 {
     Shader.Use();
 
-    const KH_Camera& Camera = KH_Editor::Instance().Camera;
-
     Primitive_SSBO.Bind();
     BVH.Morton3DSSBO.Bind();
     BVH.LBVHNodeSSBO.Bind();
     BVH.AuxiliarySSBO.Bind();
-    Material_SSBO.Bind();
 
     Shader.SetInt("uLBVHNodeCount", BVH.LBVHNodeCount);
     Shader.SetUint("uFrameCounter", KH_Editor::Instance().GetFrameCounter());
-    Shader.SetUvec2("uResolution", glm::uvec2(KH_Editor::GetCanvasWidth(), KH_Editor::GetCanvasHeight()));
+    Shader.SetUvec2(
+        "uResolution",
+        glm::uvec2(KH_Editor::GetCanvasWidth(), KH_Editor::GetCanvasHeight()));
 
     KH_Editor::Instance().GetLastFramebuffer().BindColorAttachment(0, 0);
     KH_ExampleTextures::Instance().SkyboxHDR.Bind(1);
@@ -244,7 +281,12 @@ void KH_GpuLBVHScene::SetRayTracingParam(KH_Shader& Shader)
     Shader.SetInt("uSkybox", 1);
     Shader.SetInt("uHDRCache", 2);
 
-    ShaderFeature.ApplyUniforms();
+    KH_ShaderFeatureBase* feature = GetActiveShaderFeature();
+    if (feature)
+    {
+        feature->BindBuffers();
+        feature->ApplyUniforms();
+    }
 
     SetAndBindCameraParamUB0();
 }
@@ -252,7 +294,7 @@ void KH_GpuLBVHScene::SetRayTracingParam(KH_Shader& Shader)
 void KH_GpuLBVHScene::UpdateAABB()
 {
     AABB.Reset();
-    for (auto& Object :Objects)
+    for (auto& Object : Objects)
     {
         AABB.Merge(Object->GetAABB());
     }
@@ -267,8 +309,11 @@ void KH_GpuLBVHScene::BindAndBuild()
 
 void KH_GpuLBVHScene::UpdateMaterialSSBO()
 {
-    std::vector<KH_BRDFMaterialEncoded> BSDFMaterialEncodeds = EncodeBRDFMaterials();
-    Material_SSBO.SetData(BSDFMaterialEncodeds);
+    KH_ShaderFeatureBase* feature = GetActiveShaderFeature();
+    if (feature)
+    {
+        feature->UploadMaterialBuffer();
+    }
 }
 
 void KH_GpuLBVHScene::UpdatePrimitiveSSBO()
@@ -279,14 +324,21 @@ void KH_GpuLBVHScene::UpdatePrimitiveSSBO()
 
 void KH_GpuLBVHScene::Render()
 {
-    SetRayTracingParam(ShaderFeature.GetShader());
+    KH_ShaderFeatureBase* feature = GetActiveShaderFeature();
+    if (!feature || !feature->GetShader().IsValid())
+        return;
+
+    SetRayTracingParam(feature->GetShader());
 
     KH_Editor::Instance().BindCanvasFramebuffer();
 
     glBindVertexArray(KH_DefaultModels::Instance().FullscreenQuad.GetVAO());
-    glDrawElements(GL_TRIANGLES, KH_DefaultModels::Instance().FullscreenQuad.GetNumIndices(), GL_UNSIGNED_INT, 0);
+    glDrawElements(
+        GL_TRIANGLES,
+        KH_DefaultModels::Instance().FullscreenQuad.GetNumIndices(),
+        GL_UNSIGNED_INT,
+        0);
     glBindVertexArray(0);
 
     KH_Editor::Instance().UnbindCanvasFramebuffer();
 }
-
